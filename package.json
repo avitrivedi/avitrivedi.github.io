@@ -1,0 +1,17 @@
+{
+  "name": "avitrivedi.github.io",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Avi's lightweight personal website.",
+  "type": "module",
+  "scripts": {
+    "lint": "node scripts/lint.mjs",
+    "test": "node --test",
+    "build": "node scripts/build.mjs",
+    "check": "npm run lint && npm test && npm run build",
+    "clean": "node -e \"import('node:fs').then(({ rmSync }) => rmSync('dist', { recursive: true, force: true }))\""
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

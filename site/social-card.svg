@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-labelledby="title desc">
+  <title id="title">Avi Trivedi</title><desc id="desc">Founder and builder in Boston</desc>
+  <rect width="1200" height="630" fill="#fff"/>
+  <g fill="#191919" font-family="Inter,Arial,sans-serif">
+    <text x="232" y="264" font-size="54" letter-spacing="-1.5">Avi Trivedi</text>
+    <text x="232" y="320" fill="#858585" font-size="25">Boston · Dandho · Khata · Pulse</text>
+  </g>
+  <path d="M232 380h86" stroke="#dedede"/>
+  <g transform="translate(326 352)" fill="none" stroke="#8c8c8c" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M9 18c0-6 3-10 9-10s10 4 10 10v7H9ZM11 10l2-6 5 4m8 2-2-6-5 4m9 15c7 1 7-7 3-8"/>
+    <path d="M15 16h.1m7-.1h.1m-6 4 2 1 2-1" stroke-width="4"/>
+  </g>
+</svg>
