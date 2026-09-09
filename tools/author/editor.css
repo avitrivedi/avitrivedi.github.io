@@ -33,8 +33,11 @@ button, .file-control { padding: 0.48rem 0.65rem; }
 button:not(:disabled), select, .file-control { cursor: pointer; }
 button:disabled { color: #999; }
 button[aria-pressed="true"], .tool[aria-checked="true"] { border-color: var(--ink); background: var(--ink); color: var(--paper); }
-button:focus-visible, select:focus-visible, input:focus-visible,
-.file-control:focus-within, .file-control:has(+ #import-file:focus-visible) {
+button:focus-visible, select:focus-visible, input:focus-visible, .file-control:focus-within {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+.file-control:has(+ #import-file:focus-visible) {
   outline: 3px solid var(--focus);
   outline-offset: 2px;
 }

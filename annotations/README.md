@@ -27,7 +27,7 @@ Each `annotations` item has exactly:
 
 - `anchor`: one allowlisted anchor for that route;
 - `contentHash`: the editor-supplied `sha256:` revision of the current anchored HTML;
-- `layout`: `narrow` (CSS viewport below 768px) or `broad` (768px and above);
+- `layout`: `narrow` (CSS viewport width of `37.5rem` and below) or `broad` (wider than `37.5rem`); this is the site's own reflow breakpoint in `site/styles.css`, and it is expressed in `rem`, so it moves with the visitor's root font size (600px at the 16px default);
 - `strokes`: an ordered array of strokes.
 
 A stroke has exactly `tool`, `style`, and `points`. Allowed pairs are `pen` + `graphite`, `pen` + `blue`, and `highlighter` + `yellow`. Erasing removes a complete stroke before export, so `eraser` is not stored. Every point is `[x, y, pressure]`; all three values are finite numbers from 0 through 1 relative to the section box. Export rounds numbers to four decimal places and sorts section/layout records for reviewable diffs.

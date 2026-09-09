@@ -8,6 +8,7 @@ import {
   AnnotationValidationError,
   canonicalizeAnnotationFile,
   closestStrokeIndex,
+  reconcileAnnotationHashes,
   serializeAnnotationFile,
   strokePath,
   validateAnnotationFile,
@@ -109,6 +110,30 @@ test("serialization drops cleared targets so they cannot go stale in the reposit
   rejects(staleAfterEdit, /is stale/);
   assert.deepEqual(JSON.parse(serializeAnnotationFile(staleAfterEdit, manifest)).annotations, []);
   assert.deepEqual(canonicalizeAnnotationFile(cleared).annotations.length, 1);
+});
+
+test("refreshed revisions restamp untouched targets and report drawn ones as stale", () => {
+  const older = `sha256:${"0".repeat(64)}`;
+  const file = validFile({
+    annotations: [
+      { anchor: "home-introduction", contentHash: older, layout: "broad", strokes: [] },
+      { anchor: "home-writing", contentHash: older, layout: "narrow", strokes: [{ tool: "pen", style: "blue", points: [[0.1, 0.2, 0.5]] }] },
+      { anchor: "home-boston", contentHash: manifest["/"].anchors["home-boston"].contentHash, layout: "broad", strokes: [] },
+    ],
+  });
+  rejects(file, /is stale/);
+
+  const report = reconcileAnnotationHashes(file, manifest["/"].anchors);
+  assert.deepEqual(report.restamped, ["home-introduction"]);
+  assert.deepEqual(report.stale, ["home-writing/narrow"]);
+  assert.equal(file.annotations[0].contentHash, hash);
+  assert.equal(file.annotations[1].contentHash, older);
+  rejects(file, /is stale: content hash does not match home-writing/);
+
+  file.annotations[1].strokes = [];
+  assert.deepEqual(reconcileAnnotationHashes(file, manifest["/"].anchors).stale, []);
+  assert.deepEqual(validateAnnotationFile(file, manifest).annotations.map((entry) => entry.anchor),
+    ["home-introduction", "home-writing", "home-boston"]);
 });
 
 test("validation rejects unknown schema, routes, anchors, tools, styles, and fields", () => {

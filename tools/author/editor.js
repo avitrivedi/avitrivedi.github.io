@@ -3,9 +3,11 @@ import {
   ANNOTATION_LIMITS,
   closestStrokeIndex,
   createEmptyAnnotationFile,
+  reconcileAnnotationHashes,
   serializeAnnotationFile,
   strokePath,
   validateAnnotationFile,
+  validateManifest,
 } from "/annotation-core.js";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -420,6 +422,26 @@ function exportFile() {
   }
 }
 
+async function fetchManifest() {
+  const response = await fetch("/authoring-manifest.json", { cache: "no-store" });
+  if (!response.ok) throw new Error(`manifest returned HTTP ${response.status}`);
+  return validateManifest(await response.json());
+}
+
+async function refreshManifest() {
+  const next = await fetchManifest();
+  const stale = [];
+  for (const [route, definition] of Object.entries(next)) {
+    const file = routeFiles.get(route);
+    if (!file) continue;
+    for (const target of reconcileAnnotationHashes(file, definition.anchors).stale) {
+      stale.push(`${route} ${target}`);
+    }
+  }
+  manifest = next;
+  return stale;
+}
+
 async function frameLoaded() {
   try {
     const path = elements["page-preview"].contentWindow.location.pathname.replace(/^\/preview/, "") || "/";
@@ -430,8 +452,17 @@ async function frameLoaded() {
       elements.undo.disabled = history().length === 0;
     }
     await elements["page-preview"].contentDocument.fonts?.ready;
+    let notice = "";
+    try {
+      const stale = await refreshManifest();
+      if (stale.length > 0) {
+        notice = ` Page content changed under ${stale.join(", ")}: redraw or clear ${stale.length === 1 ? "that mark" : "those marks"} before export.`;
+      }
+    } catch (error) {
+      notice = ` Page revisions could not be refreshed: ${error.message}`;
+    }
     renderPreview();
-    setStatus("Local page ready in read/scroll mode. Choose a section, then enable drawing.");
+    setStatus(`Local page ready in read/scroll mode. Choose a section, then enable drawing.${notice}`, notice !== "");
   } catch (error) {
     setStatus(`Preview failed: ${error.message}`, true);
   }
@@ -476,9 +507,7 @@ function wireEvents() {
 
 async function start() {
   try {
-    const response = await fetch("/authoring-manifest.json", { cache: "no-store" });
-    if (!response.ok) throw new Error(`manifest returned HTTP ${response.status}`);
-    manifest = await response.json();
+    manifest = await fetchManifest();
     for (const route of Object.keys(manifest)) {
       routeFiles.set(route, createEmptyAnnotationFile(route));
       histories.set(route, []);

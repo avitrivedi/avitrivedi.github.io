@@ -207,7 +207,7 @@ describe("local annotation editor in a real browser", { skip: unavailable, timeo
     await page.send("Emulation.setDeviceMetricsOverride", { width: 1483, height: 885, deviceScaleFactor: 1, mobile: false });
     await page.send("Page.navigate", { url: `${origin}/` });
     await waitFor(
-      'document.querySelector("#page-preview")?.contentDocument?.querySelector("[data-annotation-id=home-introduction]") && !document.querySelector("#status").textContent.includes("Loading")',
+      'document.querySelector("#page-preview")?.contentDocument?.querySelector("[data-annotation-id=home-introduction]") && document.querySelector("#status").textContent.includes("Local page ready")',
       "the local authoring preview did not become ready",
     );
   });
@@ -220,6 +220,11 @@ describe("local annotation editor in a real browser", { skip: unavailable, timeo
   });
 
   test("imports home and essay fixtures, scopes responsive layers, and exports deterministic JSON", async () => {
+    const ready = await evaluate('document.querySelector("#status").textContent');
+    assert.match(ready, /Local page ready in read\/scroll mode/);
+    assert.doesNotMatch(ready, /could not be refreshed|Page content changed/);
+    assert.equal(await evaluate('document.querySelector("#status").dataset.error'), "false");
+
     await setFile(new URL("./fixtures/annotations/home.json", import.meta.url).pathname);
     await waitFor('document.querySelector("#status").textContent.includes("imported and validated")', "home fixture did not import");
     let visibility = await evaluate(`(() => {
@@ -330,6 +335,30 @@ describe("local annotation editor in a real browser", { skip: unavailable, timeo
     assert.equal(await evaluate('document.querySelector("#page-preview").contentDocument.querySelectorAll("[data-annotation-id=home-introduction] > .annotation-layer--broad .annotation-stroke").length'), before + 1);
   });
 
+  test("keyboard focus stays visible on every named control, including Import", async () => {
+    const tab = async () => {
+      for (const type of ["rawKeyDown", "keyUp"]) {
+        await page.send("Input.dispatchKeyEvent", { type, key: "Tab", code: "Tab", windowsVirtualKeyCode: 9, nativeVirtualKeyCode: 9 });
+      }
+      await pause(30);
+    };
+    await evaluate('document.querySelector("#clear").focus()');
+    assert.equal(await evaluate('document.activeElement.id'), "clear");
+    assert.equal(await evaluate('getComputedStyle(document.querySelector("#clear")).outlineStyle'), "solid");
+
+    await tab();
+    assert.equal(await evaluate('document.activeElement.id'), "import-file");
+    assert.equal(await evaluate(`(() => {
+      const outline = getComputedStyle(document.querySelector(".file-control"));
+      return [outline.outlineStyle, Math.round(Number.parseFloat(outline.outlineWidth))].join(" ");
+    })()`), "solid 3");
+
+    await tab();
+    assert.equal(await evaluate('document.activeElement.id'), "empty");
+    assert.equal(await evaluate('getComputedStyle(document.querySelector("#empty")).outlineStyle'), "solid");
+    await evaluate('document.activeElement.blur()');
+  });
+
   test("coarse touch mode keeps 44px controls and safely commits touch drawing", async () => {
     await page.send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
     await page.send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 5 });
@@ -357,10 +386,10 @@ describe("local annotation editor in a real browser", { skip: unavailable, timeo
 
   test("build-generated public SVG is inert, route-isolated, responsive, printable-safe, and works without JS", async () => {
     await page.send("Emulation.setTouchEmulationEnabled", { enabled: false });
-    await page.send("Emulation.setDeviceMetricsOverride", { width: 767, height: 900, deviceScaleFactor: 1, mobile: false });
+    await page.send("Emulation.setDeviceMetricsOverride", { width: 600, height: 900, deviceScaleFactor: 1, mobile: false });
     await page.send("Page.navigate", { url: `${fixtureOrigin}/` });
     await waitFor('location.origin === ' + JSON.stringify(fixtureOrigin) + ' && document.querySelectorAll(".annotation-layer").length === 2', "generated home fixture did not load");
-    let layers = await evaluate(`[...document.querySelectorAll(".annotation-layer")].map((node) => ({
+    const layers = await evaluate(`[...document.querySelectorAll(".annotation-layer")].map((node) => ({
       className: node.getAttribute("class"), display: getComputedStyle(node).display,
       pointer: getComputedStyle(node).pointerEvents, aria: node.getAttribute("aria-hidden"), focusable: node.getAttribute("focusable")
     }))`);
@@ -369,11 +398,29 @@ describe("local annotation editor in a real browser", { skip: unavailable, timeo
     assert.ok(layers.every((layer) => layer.pointer === "none" && layer.aria === "true" && layer.focusable === "false"));
     assert.equal(await evaluate('document.querySelectorAll(".annotation-layer a, .annotation-layer button, .annotation-layer [tabindex]").length'), 0);
 
-    await page.send("Emulation.setDeviceMetricsOverride", { width: 768, height: 900, deviceScaleFactor: 1, mobile: false });
-    await pause(100);
-    layers = await evaluate('[...document.querySelectorAll(".annotation-layer")].map((node) => [node.getAttribute("class"), getComputedStyle(node).display])');
-    assert.equal(layers.find(([name]) => name.includes("--broad"))[1], "block");
-    assert.equal(layers.find(([name]) => name.includes("--narrow"))[1], "none");
+    const scopeAt = async (width) => {
+      await page.send("Emulation.setDeviceMetricsOverride", { width, height: 900, deviceScaleFactor: 1, mobile: false });
+      await pause(100);
+      return evaluate(`(() => ({
+        shown: [...document.querySelectorAll(".annotation-layer")]
+          .filter((node) => getComputedStyle(node).display !== "none")
+          .map((node) => node.getAttribute("class").includes("--narrow") ? "narrow" : "broad"),
+        reflow: [
+          getComputedStyle(document.querySelector(".page-shell")).paddingTop,
+          getComputedStyle(document.querySelector(".work-index")).marginTop,
+          getComputedStyle(document.querySelector(".work-list")).getPropertyValue("--year-column").trim(),
+          getComputedStyle(document.querySelector(".site-footer")).paddingTop,
+        ].join(" "),
+      }))()`);
+    };
+    const boundary = await scopeAt(600);
+    const past = await scopeAt(601);
+    const wide = await scopeAt(1366);
+    assert.deepEqual(boundary.shown, ["narrow"]);
+    assert.deepEqual(past.shown, ["broad"]);
+    assert.deepEqual(wide.shown, ["broad"]);
+    assert.notEqual(boundary.reflow, past.reflow, "the scope boundary must sit on the site's own reflow breakpoint");
+    assert.equal(past.reflow, wide.reflow, "the broad scope must cover one unchanged site layout");
     await page.send("Emulation.setDeviceMetricsOverride", { width: 1366, height: 768, deviceScaleFactor: 1, mobile: false });
     await pause(100);
     await captureEvidence("inert-preview.png");

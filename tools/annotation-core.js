@@ -13,7 +13,7 @@ export const STYLES = Object.freeze({
   highlighter: Object.freeze(["yellow"]),
 });
 
-export const ANNOTATION_CSS = `[data-annotation-active]{position:relative}.annotation-layer{position:absolute;z-index:2;inset:0;display:block;width:100%;height:100%;overflow:visible;pointer-events:none;user-select:none}.annotation-layer--narrow{display:none}.annotation-stroke{fill:none;stroke-linecap:round;stroke-linejoin:round;vector-effect:non-scaling-stroke}.annotation-stroke--pen-graphite{stroke:#555;stroke-width:2.25}.annotation-stroke--pen-blue{stroke:#315f9d;stroke-width:2.25}.annotation-stroke--highlighter-yellow{stroke:#d6a900;stroke-width:12;opacity:.22}@media(max-width:47.999rem){.annotation-layer--broad{display:none}.annotation-layer--narrow{display:block}}@media print{.annotation-layer{display:none!important}}@media(prefers-contrast:more){.annotation-layer{display:none}}@media(forced-colors:active){.annotation-layer{display:none!important}}`;
+export const ANNOTATION_CSS = `[data-annotation-active]{position:relative}.annotation-layer{position:absolute;z-index:2;inset:0;display:block;width:100%;height:100%;overflow:visible;pointer-events:none;user-select:none}.annotation-layer--narrow{display:none}.annotation-stroke{fill:none;stroke-linecap:round;stroke-linejoin:round;vector-effect:non-scaling-stroke}.annotation-stroke--pen-graphite{stroke:#555;stroke-width:2.25}.annotation-stroke--pen-blue{stroke:#315f9d;stroke-width:2.25}.annotation-stroke--highlighter-yellow{stroke:#d6a900;stroke-width:12;opacity:.22}@media(max-width:37.5rem){.annotation-layer--broad{display:none}.annotation-layer--narrow{display:block}}@media print{.annotation-layer{display:none!important}}@media(prefers-contrast:more){.annotation-layer{display:none}}@media(forced-colors:active){.annotation-layer{display:none!important}}`;
 
 const FILE_KEYS = ["schemaVersion", "route", "annotations"];
 const ANNOTATION_KEYS = ["anchor", "contentHash", "layout", "strokes"];
@@ -209,6 +209,23 @@ export function serializeAnnotationFile(value, manifest) {
 
 export function createEmptyAnnotationFile(route) {
   return { schemaVersion: ANNOTATION_SCHEMA_VERSION, route, annotations: [] };
+}
+
+export function reconcileAnnotationHashes(file, anchors) {
+  const restamped = [];
+  const stale = [];
+  for (const annotation of file.annotations) {
+    if (!Object.hasOwn(anchors, annotation.anchor)) continue;
+    const current = anchors[annotation.anchor].contentHash;
+    if (current === annotation.contentHash) continue;
+    if (annotation.strokes.length === 0) {
+      annotation.contentHash = current;
+      restamped.push(annotation.anchor);
+    } else {
+      stale.push(`${annotation.anchor}/${annotation.layout}`);
+    }
+  }
+  return { restamped, stale };
 }
 
 export function strokePath(points, scale = 1) {
