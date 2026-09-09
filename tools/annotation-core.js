@@ -180,6 +180,7 @@ export function canonicalizeAnnotationFile(value) {
     schemaVersion: ANNOTATION_SCHEMA_VERSION,
     route: value.route,
     annotations: [...value.annotations]
+      .filter((annotation) => !Array.isArray(annotation?.strokes) || annotation.strokes.length > 0)
       .sort((left, right) => {
         const leftKey = `${left.anchor}\u0000${left.layout}`;
         const rightKey = `${right.anchor}\u0000${right.layout}`;

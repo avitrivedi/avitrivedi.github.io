@@ -86,6 +86,10 @@ function selectedAnnotation(create = false) {
   return annotation;
 }
 
+function fileStrokeCount() {
+  return currentFile.annotations.reduce((total, annotation) => total + annotation.strokes.length, 0);
+}
+
 function setTool(tool) {
   selectedTool = tool;
   for (const button of toolButtons) button.setAttribute("aria-checked", String(button.dataset.tool === tool));
@@ -222,7 +226,7 @@ function cancelPointer(layer) {
   if (!activePointer) return;
   const before = activePointer.before;
   try {
-    if (layer.hasPointerCapture(activePointer.id)) layer.releasePointerCapture(activePointer.id);
+    if (layer?.hasPointerCapture(activePointer.id)) layer.releasePointerCapture(activePointer.id);
   } catch {
     // Capture may already be gone after a platform cancellation.
   }
@@ -255,7 +259,7 @@ function installPointerHandlers(layer) {
 
     const before = clone(currentFile);
     const target = selectedAnnotation(true);
-    if (target.strokes.length >= ANNOTATION_LIMITS.maxStrokes) {
+    if (fileStrokeCount() >= ANNOTATION_LIMITS.maxStrokes) {
       replaceCurrent(before);
       setStatus(`This file has reached the ${ANNOTATION_LIMITS.maxStrokes}-stroke limit.`, true);
       return;
@@ -303,12 +307,14 @@ function installPointerHandlers(layer) {
   layer.addEventListener("lostpointercapture", () => cancelPointer(layer));
 }
 
+function discardActiveStroke() {
+  if (!activePointer) return;
+  cancelPointer(elements["page-preview"].contentDocument?.querySelector(".annotation-author-canvas"));
+}
+
 function setDrawing(next) {
   drawing = Boolean(next) && !publicPreview;
-  if (!drawing && activePointer) {
-    const layer = elements["page-preview"].contentDocument?.querySelector(".annotation-author-canvas");
-    if (layer) cancelPointer(layer);
-  }
+  if (!drawing) discardActiveStroke();
   elements["draw-toggle"].setAttribute("aria-pressed", String(drawing));
   elements["draw-toggle"].textContent = drawing ? "Disable drawing" : "Enable drawing";
   renderPreview();
@@ -331,6 +337,7 @@ function setPublicPreview(next) {
 }
 
 function resetModes() {
+  discardActiveStroke();
   publicPreview = false;
   drawing = false;
   document.body.dataset.publicPreview = "false";
@@ -438,12 +445,11 @@ function wireEvents() {
     elements.undo.disabled = history().length === 0;
     loadRoute();
   });
-  elements.anchor.addEventListener("change", () => { setDrawing(false); setPublicPreview(false); renderPreview(); });
+  elements.anchor.addEventListener("change", () => { setDrawing(false); setPublicPreview(false); });
   elements.layout.addEventListener("change", () => {
     setDrawing(false);
     setPublicPreview(false);
     configureViewports();
-    renderPreview();
   });
   elements.viewport.addEventListener("change", () => { resizePreview(); requestAnimationFrame(renderPreview); });
   elements["draw-toggle"].addEventListener("click", () => setDrawing(!drawing));

@@ -92,6 +92,25 @@ test("strict validation accepts the fixture and deterministic serialization is s
   assert.equal(Object.is(canonicalizeAnnotationFile(reversed).annotations[1].strokes[0].points[0][1], -0), false);
 });
 
+test("serialization drops cleared targets so they cannot go stale in the repository", () => {
+  const cleared = validFile({
+    annotations: [
+      { anchor: "home-introduction", contentHash: hash, layout: "broad", strokes: [] },
+      ...validFile({ annotations: [{ ...validFile().annotations[0], layout: "narrow" }] }).annotations,
+    ],
+  });
+  const output = JSON.parse(serializeAnnotationFile(cleared, manifest));
+  assert.deepEqual(output.annotations.map((annotation) => annotation.layout), ["narrow"]);
+
+  const staleAfterEdit = changed(cleared, (file) => {
+    file.annotations[0].contentHash = `sha256:${"0".repeat(64)}`;
+    file.annotations.pop();
+  });
+  rejects(staleAfterEdit, /is stale/);
+  assert.deepEqual(JSON.parse(serializeAnnotationFile(staleAfterEdit, manifest)).annotations, []);
+  assert.deepEqual(canonicalizeAnnotationFile(cleared).annotations.length, 1);
+});
+
 test("validation rejects unknown schema, routes, anchors, tools, styles, and fields", () => {
   rejects(validFile({ schemaVersion: 2 }), /unknown schema version/);
   rejects(validFile({ route: "/missing/" }), /unknown route/);
