@@ -1,0 +1,15 @@
+node_modules/
+dist/
+coverage/
+.cache/
+.tmp/
+tmp/
+.env
+.env.*
+*.log
+npm-debug.log*
+playwright-report/
+test-results/
+.verify-*
+.chrome-profile/
+.DS_Store
