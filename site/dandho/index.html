@@ -16,19 +16,19 @@
     <main class="page-shell article-page" id="main-content" tabindex="-1">
       <nav class="article-nav" aria-label="Writing"><a href="../">Index</a></nav>
       <article>
-        <header class="article-header"><h1>Dandho</h1><p class="article-date"><time datetime="2026-09-08">8 September, 2026</time></p></header>
+        <header class="article-header" data-annotation-id="dandho-header"><h1>Dandho</h1><p class="article-date"><time datetime="2026-09-08">8 September, 2026</time></p></header>
         <div class="article-body">
-          <p class="lede">The hard part of software for a local service business is not putting an appointment on a calendar. It is keeping the rest of the day coherent when customers, staff, payments, and messages all move at once.</p>
+          <p class="lede" data-annotation-id="dandho-overview">The hard part of software for a local service business is not putting an appointment on a calendar. It is keeping the rest of the day coherent when customers, staff, payments, and messages all move at once.</p>
           <p>A salon or studio often has perfectly workable tools for individual jobs. A calendar holds bookings. A messaging app holds conversations. A notebook remembers a preference. A spreadsheet closes the week. Each tool makes sense by itself, but the business still has to join them together by hand.</p>
           <p>Dandho is my attempt to treat that joining work as the product. It is a WhatsApp-first operating system for appointment-based local businesses, beginning with salons and wellness studios in India.</p>
-          <h2>Start with the operating model</h2>
+          <h2 data-annotation-id="dandho-operating-model">Start with the operating model</h2>
           <p>The tempting approach is to build the visible screen first: a polished calendar with customer cards around it. But a reliable calendar depends on less visible decisions. Who belongs to which business and location? Which staff member can perform a service? What happens to a reminder when an appointment moves? Which price and tax rules produced an invoice?</p>
           <p>I started Dandho with those foundations. The current system is an Angular web app backed by a NestJS API, PostgreSQL, and a shared contract layer. Authentication and membership boundaries are implemented; the broader booking, billing, and messaging surface is being built in phases. The API contract says explicitly which operations exist and which are still planned.</p>
           <p>That distinction matters. An ambitious product becomes easier to reason about when its promises are narrower than its diagrams.</p>
-          <h2>Make boundaries do useful work</h2>
+          <h2 data-annotation-id="dandho-boundaries">Make boundaries do useful work</h2>
           <p>A local business may have several locations and people with different responsibilities. Dandho models those boundaries directly instead of relying on every screen to remember them. Requests are checked against active memberships and location scope. Long-lived sessions stay out of application code, and state-changing session requests carry an additional verification token.</p>
           <p>These choices are not glamorous features. They are ways to make later features safer by default. The same idea shapes the repository: database access has one home, shared contracts carry no business logic, and background work lives outside the request path.</p>
-          <h2>Software should fit the conversation</h2>
+          <h2 data-annotation-id="dandho-conversation">Software should fit the conversation</h2>
           <p>For many local businesses, messaging is not a marketing channel bolted onto operations. It is where customers ask questions, confirm times, and change plans. Making the system WhatsApp-first means reminders and replies should remain connected to the appointment and customer record that gave them meaning.</p>
           <p>The goal is not to automate every conversation. It is to remove the repeated copying around it: finding the booking, checking the right location, reconstructing context, and recording what changed.</p>
           <p>Dandho is still in its foundation phase. What exists today is the platform core and a deliberate contract for what follows. That may look slower than racing toward a collection of screens, but it creates something more useful: a system whose later convenience rests on understandable rules.</p>

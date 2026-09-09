@@ -20,7 +20,7 @@ test("home is the concise biography, writing index, and Boston footer", () => {
   assert.match(home, /founder of <a href="\.\/dandho\/">Dandho/);
   assert.equal((home.match(/class="work-link"/g) ?? []).length, 3);
   assert.match(home, /class="new-marker"><span>New<\/span><svg[^>]+aria-hidden="true"/);
-  assert.match(home, /<footer class="site-footer">/);
+  assert.match(home, /<footer class="site-footer"(?:\s[^>]*)?>/);
   assert.doesNotMatch(home, /<article\b|Selected project|Archive/);
   assert.doesNotMatch(publicText, /tiny[ -]?coffee/i);
 });

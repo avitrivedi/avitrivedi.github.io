@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "route": "/",
+  "annotations": [
+    {
+      "anchor": "home-introduction",
+      "contentHash": "sha256:57c2930019b5209040b33611cc98a21d01d61e74b61f034fb607c0d62dadb83c",
+      "layout": "broad",
+      "strokes": [
+        {
+          "tool": "pen",
+          "style": "blue",
+          "points": [[0.08, 0.12, 0.5], [0.4, 0.16, 0.7], [0.75, 0.1, 0.5]]
+        }
+      ]
+    },
+    {
+      "anchor": "home-introduction",
+      "contentHash": "sha256:57c2930019b5209040b33611cc98a21d01d61e74b61f034fb607c0d62dadb83c",
+      "layout": "narrow",
+      "strokes": [
+        {
+          "tool": "highlighter",
+          "style": "yellow",
+          "points": [[0.1, 0.2, 0.5], [0.65, 0.2, 0.5]]
+        }
+      ]
+    }
+  ]
+}

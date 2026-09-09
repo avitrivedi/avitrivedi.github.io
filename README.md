@@ -17,11 +17,27 @@ npm run check
 
 `npm run check` runs the source linter, Node tests, and production build. Generated output is written to `dist/` and is not committed.
 
+## Author annotations locally
+
+Annotations are repository-authored and become public only after export, review, commit, PR, and deployment. Start the local-only editor with:
+
+```sh
+npm run annotations:author
+```
+
+Open the printed `http://127.0.0.1:4174/` URL. The server binds only to loopback and has no write endpoint. In the editor, choose a route, stable section, `narrow` or `broad` layout, and a matching preview width. Import that route’s existing JSON from `annotations/` or begin empty; then explicitly enable drawing. Pen, highlighter, stroke eraser, undo, confirmed clear, deterministic export, and an exact inert public-preview mode are available. Replace only the matching file in `annotations/`, run `npm run check`, inspect the diff and target widths, and publish through the normal PR workflow. The editor never commits, pushes, uploads, or stores a draft.
+
+`narrow` means a CSS viewport below 768px; `broad` means 768px and above. Marks use normalized section-relative points and are intentionally hidden outside their authored scope, in print, in forced-colors mode, and when increased contrast is requested. They are suitable for reviewed section drawings and highlighting—not exact-word anchoring across arbitrary reflow. Re-author a mark if its target text or layout changes; a SHA-256 content mismatch fails the build.
+
+The strict schema and complete anchor/limit reference are in [`annotations/README.md`](annotations/README.md). Public pages receive only validated, generated, decorative SVG: no editor, raw JSON, account, storage, cookies, service worker, API, or visitor controls.
+
 ## Structure
 
 - `site/` — visitor-facing source and local font assets
-- `scripts/` — dependency-free lint and build scripts
-- `test/` — content, routing, time-zone, payload, and rendered-layout checks. The rendered-layout tests drive an installed Chromium or Chrome over the DevTools protocol with no extra packages. Set `CHROME_PATH` to point at a browser when discovery fails. They need Node.js 22 or newer for its global `WebSocket`. They skip with a reason on a developer machine that has no browser or an older Node.js, but they fail when `CI` or `REQUIRE_BROWSER` is set, so a deployment can never go green without them.
+- `annotations/` — reviewed route data and schema/workflow reference
+- `scripts/` — dependency-free lint, validation, and build-time SVG generation
+- `tools/` — loopback-only annotation editor; never copied into production
+- `test/` — content, routing, time-zone, payload, annotation-security, editor, and rendered-layout checks. The rendered-layout tests drive an installed Chromium or Chrome over the DevTools protocol with no extra packages. Set `CHROME_PATH` to point at a browser when discovery fails. They need Node.js 22 or newer for its global `WebSocket`. They skip with a reason on a developer machine that has no browser or an older Node.js, but they fail when `CI` or `REQUIRE_BROWSER` is set, so a deployment can never go green without them.
 - `.github/workflows/` — CI and GitHub Pages deployment
 
 Changes are reviewed through pull requests. A green deployment from public `master` publishes the generated `dist/` artifact to GitHub Pages.

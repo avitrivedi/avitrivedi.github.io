@@ -6,9 +6,11 @@
   "type": "module",
   "scripts": {
     "lint": "node scripts/lint.mjs",
-    "test": "node --test",
+    "test": "node --test --test-concurrency=1",
     "build": "node scripts/build.mjs",
-    "check": "npm run lint && npm test && npm run build",
+    "annotations:author": "node tools/author-server.mjs",
+    "verify:dist": "node scripts/verify-dist.mjs",
+    "check": "npm run lint && npm test && npm run build && npm run verify:dist",
     "clean": "node -e \"import('node:fs').then(({ rmSync }) => rmSync('dist', { recursive: true, force: true }))\""
   },
   "engines": {

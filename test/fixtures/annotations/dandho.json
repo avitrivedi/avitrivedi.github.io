@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "route": "/dandho/",
+  "annotations": [
+    {
+      "anchor": "dandho-overview",
+      "contentHash": "sha256:06d5ccdfe4262e0941c52100426fb2251e3e4f527d9c340237ed1f2240c69041",
+      "layout": "broad",
+      "strokes": [
+        {
+          "tool": "pen",
+          "style": "graphite",
+          "points": [[0.04, 0.05, 0.4], [0.06, 0.45, 0.6], [0.04, 0.9, 0.4]]
+        }
+      ]
+    }
+  ]
+}

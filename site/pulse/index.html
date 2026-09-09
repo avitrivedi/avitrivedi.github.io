@@ -14,19 +14,19 @@
     <main class="page-shell article-page" id="main-content" tabindex="-1">
       <nav class="article-nav" aria-label="Writing"><a href="../">Index</a></nav>
       <article>
-        <header class="article-header"><h1>Pulse</h1><p class="article-date"><time datetime="2026-09-08">8 September, 2026</time></p></header>
+        <header class="article-header" data-annotation-id="pulse-header"><h1>Pulse</h1><p class="article-date"><time datetime="2026-09-08">8 September, 2026</time></p></header>
         <div class="article-body">
-          <p class="lede">A reporting pack is useful when a reader can move backward from a chart to the decision behind the metric and the rows beneath it.</p>
+          <p class="lede" data-annotation-id="pulse-overview">A reporting pack is useful when a reader can move backward from a chart to the decision behind the metric and the rows beneath it.</p>
           <p>Pulse is a compact experiment in executive reporting. It takes event-level activity, derives a daily measure in SQL, and presents the result in a scorecard. The pieces are deliberately ordinary: a CSV input, a query, a small output table, a written metric definition, and a Tableau workbook.</p>
           <p>The point is not the tooling. It is preserving a line of sight through all of it.</p>
-          <h2>Define the grain before the metric</h2>
+          <h2 data-annotation-id="pulse-grain">Define the grain before the metric</h2>
           <p>“Daily active users” sounds self-explanatory until two analysts produce different numbers. One might count events. Another might count people with a login. A third might exclude internal activity. The disagreement usually starts before the SQL.</p>
           <p>Pulse begins by naming the grain of the source—one row per event—and then defines daily activity as distinct users with qualifying activity on a calendar date. The query is short because the definition has already done the difficult work.</p>
           <p>A written definition sits beside the transformation. That gives future changes a place to start: change the meaning deliberately, then change the query, rather than letting a dashboard filter quietly become policy.</p>
-          <h2>Prefer inspectable handoffs</h2>
+          <h2 data-annotation-id="pulse-handoffs">Prefer inspectable handoffs</h2>
           <p>The query writes a small daily table for the workbook to consume. A direct database connection could be more automatic, but the intermediate file is valuable while the model is young. It can be opened without specialist software, compared between runs, and checked against a few source rows.</p>
           <p>This pattern also separates responsibilities. SQL establishes the number; the scorecard decides how to show it. Formatting a chart cannot silently redefine the metric, and changing the transformation does not require rebuilding the visual layer from scratch.</p>
-          <h2>A scorecard is an interface</h2>
+          <h2 data-annotation-id="pulse-scorecard">A scorecard is an interface</h2>
           <p>Executive reporting often fails through accumulation. Each reasonable request adds a tile, filter, or annotation until the page records everything and communicates nothing. Pulse treats the scorecard as an interface with a specific job: establish the current state, show the recent direction, and make the underlying definition easy to find.</p>
           <p>That suggests a useful constraint. If a metric does not change a decision or sharpen a question, it probably does not belong on the first screen. Supporting analysis can still exist, but hierarchy should reflect how the report is read.</p>
           <p>Pulse remains an experiment with sample data, not a report of real company performance. Its value is in the route it demonstrates: events become a documented measure, the measure becomes a portable table, and the table becomes a restrained scorecard. Every step can be inspected without trusting the one after it.</p>

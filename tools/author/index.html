@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light">
+    <title>Local annotation author — Avi Trivedi</title>
+    <link rel="stylesheet" href="./editor.css">
+    <script type="module" src="./editor.js"></script>
+  </head>
+  <body>
+    <header class="app-header">
+      <div>
+        <p class="eyebrow">Local repository tool</p>
+        <h1>Annotation author</h1>
+      </div>
+      <p id="status" class="status" role="status" aria-live="polite">Loading the local preview…</p>
+    </header>
+
+    <main class="workspace">
+      <aside class="controls" aria-label="Annotation controls">
+        <fieldset>
+          <legend>Target</legend>
+          <label for="route">Page</label>
+          <select id="route" name="route"></select>
+          <label for="anchor">Section</label>
+          <select id="anchor" name="anchor"></select>
+          <label for="layout">Layout scope</label>
+          <select id="layout" name="layout">
+            <option value="broad">Broad (768px and wider)</option>
+            <option value="narrow">Narrow (below 768px)</option>
+          </select>
+          <label for="viewport">Preview viewport</label>
+          <select id="viewport" name="viewport"></select>
+        </fieldset>
+
+        <fieldset>
+          <legend>Mode and tool</legend>
+          <div class="button-row">
+            <button id="draw-toggle" type="button" aria-pressed="false">Enable drawing</button>
+            <button id="public-preview" type="button" aria-pressed="false">Public preview</button>
+          </div>
+          <div class="tool-grid" role="radiogroup" aria-label="Drawing tool">
+            <button type="button" class="tool" data-tool="pen" role="radio" aria-checked="true">Pen <kbd>P</kbd></button>
+            <button type="button" class="tool" data-tool="highlighter" role="radio" aria-checked="false">Highlighter <kbd>H</kbd></button>
+            <button type="button" class="tool" data-tool="eraser" role="radio" aria-checked="false">Eraser <kbd>E</kbd></button>
+          </div>
+          <label for="style">Pen style</label>
+          <select id="style" name="style">
+            <option value="graphite">Graphite</option>
+            <option value="blue">Blue</option>
+          </select>
+        </fieldset>
+
+        <fieldset>
+          <legend>Edit</legend>
+          <div class="button-row">
+            <button id="undo" type="button" disabled>Undo <kbd>U</kbd></button>
+            <button id="clear" type="button">Clear target</button>
+          </div>
+          <p class="help">Freehand geometry uses mouse, touch, or pen. Read/scroll mode is the default. Single-key shortcuts work only while drawing is enabled; Escape returns to reading.</p>
+        </fieldset>
+
+        <fieldset>
+          <legend>File workflow</legend>
+          <label class="file-control" for="import-file">Import route JSON</label>
+          <input id="import-file" type="file" accept="application/json,.json">
+          <div class="button-row">
+            <button id="empty" type="button">Begin empty</button>
+            <button id="export" type="button">Export JSON</button>
+          </div>
+          <p class="help">Export to <code>annotations/</code>, review the deterministic diff, run <code>npm run check</code>, then use the normal PR workflow.</p>
+        </fieldset>
+      </aside>
+
+      <section class="preview-panel" aria-labelledby="preview-title">
+        <div class="preview-heading">
+          <h2 id="preview-title">Real local page</h2>
+          <output id="preview-size">1366 × 768 · broad</output>
+        </div>
+        <div id="preview-scroll" class="preview-scroll">
+          <iframe id="page-preview" title="Local page with annotation preview" sandbox="allow-same-origin allow-scripts"></iframe>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>
