@@ -22,7 +22,7 @@ export function formatBostonTime(date = new Date()) {
     hour: "numeric",
     minute: "2-digit",
     hour12: true,
-  }).format(date).replace(" ", "").toLowerCase();
+  }).format(date).replace(/\s+/gu, "").toLowerCase();
   return `${time} in Boston, Massachusetts`;
 }
 
