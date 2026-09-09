@@ -21,7 +21,7 @@ npm run check
 
 - `site/` — visitor-facing source and local font assets
 - `scripts/` — dependency-free lint and build scripts
-- `test/` — content, routing, time-zone, payload, and rendered-layout checks. The rendered-layout tests drive an installed Chromium or Chrome over the DevTools protocol with no extra packages. They skip with a reason when no browser is found; set `CHROME_PATH` to point at one.
+- `test/` — content, routing, time-zone, payload, and rendered-layout checks. The rendered-layout tests drive an installed Chromium or Chrome over the DevTools protocol with no extra packages. Set `CHROME_PATH` to point at a browser when discovery fails. They skip with a reason on a developer machine that has no browser, but they fail when `CI` or `REQUIRE_BROWSER` is set, so a deployment can never go green without them.
 - `.github/workflows/` — CI and GitHub Pages deployment
 
 Changes are reviewed through pull requests. A green deployment from public `master` publishes the generated `dist/` artifact to GitHub Pages.

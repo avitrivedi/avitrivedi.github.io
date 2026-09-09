@@ -120,6 +120,7 @@ class Connection {
 
 async function launchChromium(binary) {
   const profile = mkdtempSync(join(tmpdir(), "site-layout-"));
+  let gone = false;
   const child = spawn(binary, [
     "--headless=new",
     "--no-sandbox",
@@ -135,46 +136,79 @@ async function launchChromium(binary) {
     "--remote-debugging-port=0",
     "about:blank",
   ], { stdio: ["ignore", "ignore", "pipe"] });
+  child.once("close", () => { gone = true; });
+  child.once("error", () => { gone = true; });
 
-  const endpoint = await new Promise((done, fail) => {
-    let buffer = "";
-    const timer = setTimeout(() => fail(new Error("Chromium did not report a DevTools endpoint")), 30_000);
-    child.stderr.on("data", (chunk) => {
-      buffer += chunk;
-      const match = buffer.match(/(ws:\/\/\S+)/);
-      if (!match) return;
-      clearTimeout(timer);
-      done(match[1]);
+  const stop = async () => {
+    child.kill("SIGKILL");
+    await new Promise((done) => {
+      if (gone) return done();
+      child.once("close", done);
+      child.once("error", done);
+      setTimeout(done, 2_000).unref();
     });
-    child.once("error", fail);
-  });
-
-  const browser = await Connection.open(endpoint);
-  const { targetId } = await browser.send("Target.createTarget", { url: "about:blank" });
-  const { sessionId } = await browser.send("Target.attachToTarget", { targetId, flatten: true });
-  browser.sessionId = sessionId;
-
-  return {
-    page: browser,
-    async close() {
-      browser.close();
-      child.kill("SIGKILL");
-      await new Promise((done) => child.once("exit", done));
-      rmSync(profile, { recursive: true, force: true });
-    },
+    child.stderr?.destroy();
+    rmSync(profile, { recursive: true, force: true });
   };
+
+  let timer;
+  try {
+    const endpoint = await new Promise((done, fail) => {
+      let buffer = "";
+      timer = setTimeout(() => fail(new Error("Chromium did not report a DevTools endpoint within 30s")), 30_000);
+      const read = (chunk) => {
+        buffer += chunk;
+        const match = buffer.match(/(ws:\/\/\S+)\r?\n/);
+        if (!match) return;
+        child.stderr.off("data", read);
+        done(match[1]);
+      };
+      child.stderr.on("data", read);
+      child.once("error", fail);
+      child.once("close", (code) => fail(new Error(`Chromium exited with code ${code} before reporting a DevTools endpoint`)));
+    });
+
+    const browser = await Connection.open(endpoint);
+    const { targetId } = await browser.send("Target.createTarget", { url: "about:blank" });
+    const { sessionId } = await browser.send("Target.attachToTarget", { targetId, flatten: true });
+    browser.sessionId = sessionId;
+
+    return {
+      page: browser,
+      async close() {
+        browser.close();
+        await stop();
+      },
+    };
+  } catch (error) {
+    await stop();
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 const chromium = findChromium();
-const reason = !chromium
-  ? "no Chromium or Chrome binary found; set CHROME_PATH to run rendered-layout coverage"
+const unavailable = !chromium
+  ? "no Chromium or Chrome binary found; set CHROME_PATH to point at one"
   : typeof WebSocket !== "function"
     ? "this Node.js build has no global WebSocket; rendered-layout coverage needs Node.js 22 or newer"
-    : false;
+    : null;
+
+const demanded = process.env.REQUIRE_BROWSER ?? process.env.CI ?? "";
+const required = demanded !== "" && demanded !== "0" && demanded !== "false";
+
+if (unavailable && required) {
+  test("a browser is available for the required rendered-layout coverage", () => {
+    assert.fail(
+      `Rendered-layout coverage is required here because ${process.env.REQUIRE_BROWSER ? "REQUIRE_BROWSER" : "CI"} is set, but ${unavailable}.`,
+    );
+  });
+}
 
 const limits = { timeout: 60_000 };
 
-describe("rendered layout in a real browser", { skip: reason, timeout: 300_000 }, () => {
+describe("rendered layout in a real browser", { skip: unavailable ?? false, timeout: 300_000 }, () => {
   let site;
   let browser;
   let page;
@@ -343,6 +377,8 @@ describe("rendered layout in a real browser", { skip: reason, timeout: 300_000 }
   });
 
   test("keyboard focus fades the other rows and paints a visible focus ring", limits, async () => {
+    await viewport(1483, 885, false);
+    await open("/");
     for (let press = 0; press < 12; press += 1) {
       for (const type of ["rawKeyDown", "keyUp"]) {
         await page.send("Input.dispatchKeyEvent", { type, key: "Tab", code: "Tab", windowsVirtualKeyCode: 9, nativeVirtualKeyCode: 9 });
