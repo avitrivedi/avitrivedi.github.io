@@ -58,26 +58,50 @@ function findChromium() {
   return [...fromEnv, ...installed, ...cached].find((candidate) => candidate && existsSync(candidate)) ?? null;
 }
 
+const CDP_TIMEOUT = 20_000;
+
 class Connection {
   #socket;
   #nextId = 0;
   #pending = new Map();
   #waiting = [];
   #listeners = new Map();
+  #dead = null;
   sessionId = null;
 
   constructor(socket) {
     this.#socket = socket;
     socket.addEventListener("message", (event) => this.#receive(JSON.parse(event.data)));
+    socket.addEventListener("close", () => this.#abort(new Error("the DevTools connection closed")));
+    socket.addEventListener("error", () => this.#abort(new Error("the DevTools connection failed")));
   }
 
-  static async open(url) {
+  static async open(url, timeout = CDP_TIMEOUT) {
     const socket = new WebSocket(url);
-    await new Promise((ready, fail) => {
-      socket.addEventListener("open", ready, { once: true });
-      socket.addEventListener("error", () => fail(new Error(`cannot reach DevTools at ${url}`)), { once: true });
-    });
+    try {
+      await new Promise((ready, fail) => {
+        const timer = setTimeout(() => fail(new Error(`DevTools at ${url} did not complete a handshake within ${timeout}ms`)), timeout);
+        const settle = (finish, value) => {
+          clearTimeout(timer);
+          finish(value);
+        };
+        socket.addEventListener("open", () => settle(ready), { once: true });
+        socket.addEventListener("error", () => settle(fail, new Error(`cannot reach DevTools at ${url}`)), { once: true });
+        socket.addEventListener("close", () => settle(fail, new Error(`DevTools at ${url} closed the connection`)), { once: true });
+      });
+    } catch (error) {
+      socket.close();
+      throw error;
+    }
     return new Connection(socket);
+  }
+
+  #abort(reason) {
+    if (this.#dead) return;
+    this.#dead = reason;
+    for (const settle of this.#pending.values()) settle.fail(reason);
+    this.#pending.clear();
+    for (const watcher of this.#waiting.splice(0)) watcher.fail(reason);
   }
 
   #receive(message) {
@@ -96,16 +120,41 @@ class Connection {
     }
   }
 
-  send(method, params = {}) {
+  send(method, params = {}, timeout = CDP_TIMEOUT) {
+    if (this.#dead) return Promise.reject(this.#dead);
     const id = ++this.#nextId;
     const payload = { id, method, params };
     if (this.sessionId) payload.sessionId = this.sessionId;
-    this.#socket.send(JSON.stringify(payload));
-    return new Promise((done, fail) => this.#pending.set(id, { done, fail }));
+    return new Promise((done, fail) => {
+      const timer = setTimeout(() => {
+        this.#pending.delete(id);
+        fail(new Error(`${method} did not answer within ${timeout}ms`));
+      }, timeout);
+      this.#pending.set(id, {
+        done: (result) => { clearTimeout(timer); done(result); },
+        fail: (error) => { clearTimeout(timer); fail(error); },
+      });
+      try {
+        this.#socket.send(JSON.stringify(payload));
+      } catch (error) {
+        this.#pending.get(id)?.fail(error);
+        this.#pending.delete(id);
+      }
+    });
   }
 
-  once(method) {
-    return new Promise((done) => this.#waiting.push({ method, done }));
+  once(method, timeout = CDP_TIMEOUT) {
+    if (this.#dead) return Promise.reject(this.#dead);
+    return new Promise((done, fail) => {
+      const watcher = { method };
+      const timer = setTimeout(() => {
+        this.#waiting = this.#waiting.filter((entry) => entry !== watcher);
+        fail(new Error(`${method} did not arrive within ${timeout}ms`));
+      }, timeout);
+      watcher.done = (params) => { clearTimeout(timer); done(params); };
+      watcher.fail = (error) => { clearTimeout(timer); fail(error); };
+      this.#waiting.push(watcher);
+    });
   }
 
   on(method, listener) {
@@ -114,8 +163,15 @@ class Connection {
   }
 
   close() {
+    this.#abort(new Error("the DevTools connection was closed by the harness"));
     this.#socket.close();
   }
+}
+
+const running = new Set();
+
+async function stopEveryChromium() {
+  for (const stop of [...running]) await stop();
 }
 
 async function launchChromium(binary) {
@@ -140,6 +196,7 @@ async function launchChromium(binary) {
   child.once("error", () => { gone = true; });
 
   const stop = async () => {
+    running.delete(stop);
     child.kill("SIGKILL");
     await new Promise((done) => {
       if (gone) return done();
@@ -150,6 +207,7 @@ async function launchChromium(binary) {
     child.stderr?.destroy();
     rmSync(profile, { recursive: true, force: true });
   };
+  running.add(stop);
 
   let timer;
   try {
@@ -272,6 +330,7 @@ describe("rendered layout in a real browser", { skip: unavailable ?? false, time
 
   after(async () => {
     if (browser) await browser.close();
+    await stopEveryChromium();
     if (site) {
       site.closeAllConnections?.();
       await new Promise((done) => site.close(done));
@@ -479,8 +538,28 @@ describe("rendered layout in a real browser", { skip: unavailable ?? false, time
       await page.send("Emulation.setEmulatedMedia", { features: [{ name: "forced-colors", value: "active" }] });
       await settle();
       assert.equal(await styleOf(".top-veil", "display"), "none");
-      assert.equal(await styleOf(".work-link", "opacity"), "1");
+
+      const row = await box(".work-link");
+      await page.send("Input.dispatchMouseEvent", {
+        type: "mouseMoved",
+        x: Math.round(row.left + row.width / 2),
+        y: Math.round(row.top + row.height / 2),
+        buttons: 0,
+      });
+      await pause(400);
+      const forced = await evaluate(
+        '[...document.querySelectorAll(".work-link")].map((node) => Number(getComputedStyle(node).opacity))',
+      );
+      assert.equal(forced.length, 3);
+      assert.ok(
+        await evaluate('document.querySelector(".work-link").matches(":hover")'),
+        "the first writing row is not hovered, so the forced-colours override is not exercised",
+      );
+      for (const opacity of forced) {
+        assert.equal(opacity, 1, `forced colours left a writing row faded at opacity ${opacity}`);
+      }
     } finally {
+      await page.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: 5, y: 5, buttons: 0 });
       await page.send("Emulation.setEmulatedMedia", { features: [] });
       await settle();
     }
