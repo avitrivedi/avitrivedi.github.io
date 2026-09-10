@@ -25,9 +25,17 @@ Annotations are repository-authored and become public only after export, review,
 npm run annotations:author
 ```
 
-Open the printed `http://127.0.0.1:4174/` URL. The server binds only to loopback and has no write endpoint. In the editor, choose a route, stable section, `narrow` or `broad` layout, and a matching preview width. Import that route’s existing JSON from `annotations/` or begin empty; then explicitly enable drawing. Pen, highlighter, stroke eraser, undo, confirmed clear, deterministic export, and an exact inert public-preview mode are available. Replace only the matching file in `annotations/`, run `npm run check`, inspect the diff and target widths, and publish through the normal PR workflow. The editor never commits, pushes, uploads, or stores a draft.
+Open the printed `http://127.0.0.1:4174/` URL. The server binds only to loopback and has no write endpoint. In the editor, choose a route, stable section, `narrow`, `broad`, or `compact` layout scope, and a matching preview viewport. Import that route’s existing JSON from `annotations/` or begin empty; then explicitly enable drawing. Pen, highlighter, stroke eraser, undo, confirmed clear, deterministic export, and an exact inert public-preview mode are available. Replace only the matching file in `annotations/`, run `npm run check`, inspect the diff and target widths, and publish through the normal PR workflow. The editor never commits, pushes, uploads, or stores a draft.
 
-`narrow` means a CSS viewport width of `37.5rem` and below; `broad` means wider than `37.5rem`. That is the site's own reflow breakpoint in `site/styles.css`, so a mark is never shown at a layout it was not authored against. The boundary is in `rem`, so it moves with the visitor's root font size (600px at the 16px default). Marks use normalized section-relative points and are intentionally hidden outside their authored scope, in print, in forced-colors mode, and when increased contrast is requested. They are suitable for reviewed section drawings and highlighting—not exact-word anchoring across arbitrary reflow. Re-author a mark if its target text or layout changes; a SHA-256 content mismatch fails the build.
+A scope covers one viewport-size layout of `site/styles.css`, so a mark is never shown at a size layout it was not authored against:
+
+| Scope | Visible when | Site rule |
+|---|---|---|
+| `narrow` | width `37.5rem` and below | the width reflow at `max-width: 37.5rem` |
+| `compact` | width `46.01rem` and above **and** height `48rem` and below | the one-screen desktop rule at `(max-height: 48rem) and (min-width: 46.01rem)` |
+| `broad` | every other viewport wider than `37.5rem` | the base layout |
+
+Both boundaries are in `rem`, so they move with the visitor's root font size (600px, 736px, and 768px at the 16px default). The two rules never apply together, so exactly one scope is visible at any viewport. Scopes describe viewport size only: a coarse pointer also raises the writing-index row height, which stretches a `home-writing` mark by a few percent on a touch device at `broad` or `compact` size. Keep marks section-level rather than word-level for that reason. Marks use normalized section-relative points and are intentionally hidden outside their authored scope, in print, in forced-colors mode, and when increased contrast is requested. They are suitable for reviewed section drawings and highlighting—not exact-word anchoring across arbitrary reflow. Re-author a mark if its target text or layout changes; a SHA-256 content mismatch fails the build.
 
 The strict schema and complete anchor/limit reference are in [`annotations/README.md`](annotations/README.md). Public pages receive only validated, generated, decorative SVG: no editor, raw JSON, account, storage, cookies, service worker, API, or visitor controls.
 

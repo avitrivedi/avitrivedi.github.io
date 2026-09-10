@@ -34,12 +34,12 @@ function inside(root, path) {
   return path === root || path.startsWith(`${root}${sep}`);
 }
 
-async function siteFile(pathname) {
+async function siteFile(pathname, siteRoot) {
   let relative = pathname.slice("/preview".length);
   if (!relative || relative.endsWith("/")) relative += "index.html";
   relative = relative.replace(/^\/+/, "");
-  const path = resolve(SITE_ROOT, relative);
-  if (!inside(SITE_ROOT, path)) return null;
+  const path = resolve(siteRoot, relative);
+  if (!inside(siteRoot, path)) return null;
   try {
     return (await stat(path)).isFile() ? path : null;
   } catch {
@@ -58,7 +58,7 @@ async function authorFile(pathname) {
   }
 }
 
-export function createAuthorServer() {
+export function createAuthorServer({ siteRoot = SITE_ROOT } = {}) {
   return createServer(async (request, response) => {
     try {
       const host = request.headers.host?.split(":")[0];
@@ -74,7 +74,7 @@ export function createAuthorServer() {
       }
       const pathname = decodeURIComponent(new URL(request.url, `http://${HOST}`).pathname);
       if (pathname === "/authoring-manifest.json") {
-        const body = `${JSON.stringify(await createAnnotationManifest(SITE_ROOT))}\n`;
+        const body = `${JSON.stringify(await createAnnotationManifest(siteRoot))}\n`;
         response.writeHead(200, { "content-type": "application/json; charset=utf-8", ...securityHeaders() });
         if (request.method === "GET") response.end(body); else response.end();
         return;
@@ -86,7 +86,7 @@ export function createAuthorServer() {
         return;
       }
       const preview = pathname === "/preview" || pathname.startsWith("/preview/");
-      const file = preview ? await siteFile(pathname) : await authorFile(pathname);
+      const file = preview ? await siteFile(pathname, siteRoot) : await authorFile(pathname);
       if (!file) {
         response.writeHead(404, { "content-type": "text/plain; charset=utf-8", ...securityHeaders(preview) });
         response.end("Not found.\n");

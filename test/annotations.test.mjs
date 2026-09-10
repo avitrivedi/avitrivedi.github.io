@@ -6,6 +6,7 @@ import test from "node:test";
 import {
   ANNOTATION_LIMITS,
   AnnotationValidationError,
+  LAYOUTS,
   canonicalizeAnnotationFile,
   closestStrokeIndex,
   reconcileAnnotationHashes,
@@ -226,6 +227,42 @@ test("the renderer uses deterministic finite paths and eraser hit testing prefer
   ];
   assert.equal(closestStrokeIndex(strokes, [0.5, 0.5], 0.01), 1);
   assert.equal(closestStrokeIndex(strokes, [0.5, 0.8], 0.01), -1);
+});
+
+test("eraser hit testing measures a pixel radius on both axes of a non-square section", () => {
+  const wideSection = [550, 103];
+  const tallSection = [103, 550];
+  const horizontal = [{ points: [[0, 0.5, 0.5], [1, 0.5, 0.5]] }];
+  const vertical = [{ points: [[0.5, 0, 0.5], [0.5, 1, 0.5]] }];
+  assert.equal(closestStrokeIndex(horizontal, [0.5, 0.55], 16, wideSection), 0);
+  assert.equal(closestStrokeIndex(vertical, [0.55, 0.5], 16, tallSection), 0);
+  assert.equal(closestStrokeIndex(horizontal, [0.5, 0.55], 16 / 550), -1);
+  assert.equal(closestStrokeIndex(vertical, [0.55, 0.5], 16 / 550), -1);
+  assert.equal(closestStrokeIndex(horizontal, [0.5, 0.9], 16, wideSection), -1);
+  assert.equal(closestStrokeIndex(vertical, [0.9, 0.5], 16, tallSection), -1);
+});
+
+test("every supported layout scope validates and generates its own scoped layer", () => {
+  const definition = ANNOTATION_ROUTES[0];
+  const source = readFileSync(resolve(siteRoot, definition.page), "utf8");
+  const file = validFile({
+    annotations: LAYOUTS.map((layout) => ({
+      anchor: "home-introduction",
+      contentHash: hash,
+      layout,
+      strokes: [{ tool: "pen", style: "graphite", points: [[0.1, 0.2, 0.5], [0.3, 0.4, 0.6]] }],
+    })),
+  });
+  assert.deepEqual(LAYOUTS, ["narrow", "broad", "compact"]);
+  assert.deepEqual(validateAnnotationFile(file, manifest).annotations.map((entry) => entry.layout), LAYOUTS);
+  const html = renderRouteAnnotations(source, file, definition);
+  for (const layout of LAYOUTS) {
+    assert.equal((html.match(new RegExp(`annotation-layer annotation-layer--${layout}"`, "g")) ?? []).length, 1);
+  }
+  assert.deepEqual(
+    JSON.parse(serializeAnnotationFile(file, manifest)).annotations.map((entry) => entry.layout),
+    ["broad", "compact", "narrow"],
+  );
 });
 
 test("hostile fixture input cannot be reflected by the build renderer", () => {

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { homedir, tmpdir } from "node:os";
 import { extname, join, resolve } from "node:path";
@@ -319,12 +319,17 @@ describe("local annotation editor in a real browser", { skip: unavailable, timeo
     assert.match(await evaluate('document.querySelector("#status").textContent'), /Interrupted stroke discarded/);
 
     await evaluate('document.querySelector("[data-tool=eraser]").click()');
+    const canvas = await evaluate('(() => { const rect = document.querySelector("#page-preview").contentDocument.querySelector(".annotation-author-canvas").getBoundingClientRect(); return [rect.width, rect.height]; })()');
+    assert.ok(
+      canvas[1] < canvas[0] * 0.625,
+      `the introduction section is ${canvas[0]}x${canvas[1]}, too square to prove the eraser measures pixels on both axes`,
+    );
     await evaluate(`(() => {
       const frame = document.querySelector("#page-preview");
       const win = frame.contentWindow;
       const layer = frame.contentDocument.querySelector(".annotation-author-canvas");
       const rect = layer.getBoundingClientRect();
-      layer.dispatchEvent(new win.PointerEvent("pointerdown", { bubbles: true, cancelable: true, pointerId: 73, pointerType: "mouse", isPrimary: true, button: 0, clientX: rect.left + rect.width * 0.3, clientY: rect.top + rect.height * 0.325, pressure: 0.5 }));
+      layer.dispatchEvent(new win.PointerEvent("pointerdown", { bubbles: true, cancelable: true, pointerId: 73, pointerType: "mouse", isPrimary: true, button: 0, clientX: rect.left + rect.width * 0.3, clientY: rect.top + rect.height * 0.325 + 10, pressure: 0.5 }));
     })()`);
     assert.equal(await evaluate('document.querySelector("#page-preview").contentDocument.querySelectorAll("[data-annotation-id=home-introduction] > .annotation-layer--broad .annotation-stroke").length'), before);
     await evaluate('document.querySelector("#undo").click()');
@@ -333,6 +338,24 @@ describe("local annotation editor in a real browser", { skip: unavailable, timeo
     assert.equal(await evaluate('document.querySelector("#page-preview").contentDocument.querySelectorAll("[data-annotation-id=home-introduction] > .annotation-layer--broad .annotation-stroke").length'), 0);
     await evaluate('document.querySelector("#undo").click()');
     assert.equal(await evaluate('document.querySelector("#page-preview").contentDocument.querySelectorAll("[data-annotation-id=home-introduction] > .annotation-layer--broad .annotation-stroke").length'), before + 1);
+  });
+
+  test("single-key shortcuts still work when focus sits inside the preview page", async () => {
+    const pressInPreview = (key) => evaluate(`(() => {
+      const doc = document.querySelector("#page-preview").contentDocument;
+      doc.dispatchEvent(new doc.defaultView.KeyboardEvent("keydown", { key: ${JSON.stringify(key)}, bubbles: true, cancelable: true }));
+    })()`);
+    if (!(await evaluate('document.querySelector("#draw-toggle").getAttribute("aria-pressed") === "true"'))) {
+      await evaluate('document.querySelector("#draw-toggle").click()');
+      await pause(100);
+    }
+    await pressInPreview("h");
+    assert.equal(await evaluate('document.querySelector("[data-tool=highlighter]").getAttribute("aria-checked")'), "true");
+    await pressInPreview("p");
+    assert.equal(await evaluate('document.querySelector("[data-tool=pen]").getAttribute("aria-checked")'), "true");
+    await pressInPreview("Escape");
+    await pause(100);
+    assert.equal(await evaluate('document.querySelector("#draw-toggle").getAttribute("aria-pressed")'), "false");
   });
 
   test("keyboard focus stays visible on every named control, including Import", async () => {
@@ -398,33 +421,52 @@ describe("local annotation editor in a real browser", { skip: unavailable, timeo
     assert.ok(layers.every((layer) => layer.pointer === "none" && layer.aria === "true" && layer.focusable === "false"));
     assert.equal(await evaluate('document.querySelectorAll(".annotation-layer a, .annotation-layer button, .annotation-layer [tabindex]").length'), 0);
 
-    const scopeAt = async (width) => {
-      await page.send("Emulation.setDeviceMetricsOverride", { width, height: 900, deviceScaleFactor: 1, mobile: false });
+    const scopeAt = async (width, height) => {
+      await page.send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 1, mobile: false });
       await pause(100);
-      return evaluate(`(() => ({
-        shown: [...document.querySelectorAll(".annotation-layer")]
+      return evaluate(`(() => {
+        const probe = document.querySelector(".annotation-layer").cloneNode(false);
+        probe.setAttribute("class", "annotation-layer annotation-layer--compact");
+        document.querySelector("[data-annotation-id=home-introduction]").append(probe);
+        const shown = [...document.querySelectorAll(".annotation-layer")]
           .filter((node) => getComputedStyle(node).display !== "none")
-          .map((node) => node.getAttribute("class").includes("--narrow") ? "narrow" : "broad"),
-        reflow: [
-          getComputedStyle(document.querySelector(".page-shell")).paddingTop,
-          getComputedStyle(document.querySelector(".work-index")).marginTop,
-          getComputedStyle(document.querySelector(".work-list")).getPropertyValue("--year-column").trim(),
-          getComputedStyle(document.querySelector(".site-footer")).paddingTop,
-        ].join(" "),
-      }))()`);
+          .map((node) => node.getAttribute("class").replace("annotation-layer annotation-layer--", ""));
+        probe.remove();
+        return {
+          shown,
+          reflow: [
+            getComputedStyle(document.querySelector(".page-shell")).paddingTop,
+            getComputedStyle(document.querySelector(".intro-copy")).marginTop,
+            getComputedStyle(document.querySelector(".work-index")).marginTop,
+            getComputedStyle(document.querySelector(".work-list")).getPropertyValue("--year-column").trim(),
+            getComputedStyle(document.querySelector(".site-footer")).paddingTop,
+            getComputedStyle(document.querySelector(".local-time")).minHeight,
+          ].join(" "),
+        };
+      })()`);
     };
-    const boundary = await scopeAt(600);
-    const past = await scopeAt(601);
-    const wide = await scopeAt(1366);
+    const boundary = await scopeAt(600, 900);
+    const past = await scopeAt(601, 900);
+    const wide = await scopeAt(1366, 900);
+    const shortAndNarrower = await scopeAt(601, 768);
+    const shortAndWide = await scopeAt(1366, 768);
+    const shortAndWider = await scopeAt(1483, 768);
     assert.deepEqual(boundary.shown, ["narrow"]);
     assert.deepEqual(past.shown, ["broad"]);
     assert.deepEqual(wide.shown, ["broad"]);
+    assert.deepEqual(shortAndNarrower.shown, ["broad"], "the one-screen rule needs 46.01rem of width");
+    assert.deepEqual(shortAndWide.shown, ["compact"], "only the compact scope may render in the one-screen layout");
+    assert.deepEqual(shortAndWider.shown, ["compact"]);
     assert.notEqual(boundary.reflow, past.reflow, "the scope boundary must sit on the site's own reflow breakpoint");
     assert.equal(past.reflow, wide.reflow, "the broad scope must cover one unchanged site layout");
-    await page.send("Emulation.setDeviceMetricsOverride", { width: 1366, height: 768, deviceScaleFactor: 1, mobile: false });
+    assert.equal(past.reflow, shortAndNarrower.reflow, "the broad scope must cover one unchanged site layout");
+    assert.notEqual(wide.reflow, shortAndWide.reflow, "the compact scope must be a distinct site layout");
+    assert.equal(shortAndWide.reflow, shortAndWider.reflow, "the compact scope must cover one unchanged site layout");
+    await page.send("Emulation.setDeviceMetricsOverride", { width: 1366, height: 900, deviceScaleFactor: 1, mobile: false });
     await pause(100);
     await captureEvidence("inert-preview.png");
 
+    assert.equal(await evaluate('[...document.querySelectorAll(".annotation-layer")].some((node) => getComputedStyle(node).display !== "none")'), true);
     await page.send("Emulation.setEmulatedMedia", { media: "print" });
     assert.equal(await evaluate('[...document.querySelectorAll(".annotation-layer")].every((node) => getComputedStyle(node).display === "none")'), true);
     await page.send("Emulation.setEmulatedMedia", { media: "screen", features: [] });
@@ -447,5 +489,67 @@ describe("local annotation editor in a real browser", { skip: unavailable, timeo
 
     const fixtureRequests = requests.filter((url) => url.startsWith(fixtureOrigin));
     assert.deepEqual(fixtureRequests.filter((url) => /annotations\/|\.json(?:$|\?)/.test(url)), []);
+  });
+
+  test("a stale mark reports itself without blocking drawing on an unchanged anchor", async () => {
+    const temporarySite = mkdtempSync(join(tmpdir(), "annotation-site-"));
+    cpSync(resolve("site"), temporarySite, { recursive: true });
+    const staleServer = createAuthorServer({ siteRoot: temporarySite });
+    const address = await listen(staleServer, 0);
+    try {
+      await page.send("Emulation.setDeviceMetricsOverride", { width: 1483, height: 885, deviceScaleFactor: 1, mobile: false });
+      await page.send("Page.navigate", { url: `http://127.0.0.1:${address.port}/` });
+      await waitFor(
+        'document.querySelector("#page-preview")?.contentDocument?.querySelector("[data-annotation-id=home-introduction]") && document.querySelector("#status").textContent.includes("Local page ready")',
+        "the temporary-site editor did not become ready",
+      );
+      await setFile(new URL("./fixtures/annotations/home.json", import.meta.url).pathname);
+      await waitFor('document.querySelector("#status").textContent.includes("imported and validated")', "home fixture did not import");
+
+      const index = join(temporarySite, "index.html");
+      const source = readFileSync(index, "utf8");
+      assert.ok(source.includes("I live in Boston."), "the introduction sentence used by this test moved");
+      writeFileSync(index, source.replace("I live in Boston.", "I live close to Boston."));
+
+      for (const route of ["/dandho/", "/"]) {
+        await evaluate(`(() => {
+          const select = document.querySelector("#route");
+          select.value = ${JSON.stringify(route)};
+          select.dispatchEvent(new Event("change", { bubbles: true }));
+        })()`);
+        await pause(200);
+      }
+      await waitFor(
+        'document.querySelector("#status").textContent.includes("Page content changed under")',
+        "the editor did not report the edited anchor as stale",
+      );
+
+      await evaluate(`(() => {
+        const anchor = document.querySelector("#anchor");
+        anchor.value = "home-boston";
+        anchor.dispatchEvent(new Event("change", { bubbles: true }));
+        document.querySelector("[data-tool=pen]").click();
+        document.querySelector("#draw-toggle").click();
+      })()`);
+      await pause(100);
+      await evaluate(`(() => {
+        const frame = document.querySelector("#page-preview");
+        const win = frame.contentWindow;
+        const layer = frame.contentDocument.querySelector(".annotation-author-canvas");
+        const rect = layer.getBoundingClientRect();
+        const event = (type, x, y) => layer.dispatchEvent(new win.PointerEvent(type, { bubbles: true, cancelable: true, pointerId: 81, pointerType: "mouse", isPrimary: true, button: 0, clientX: rect.left + rect.width * x, clientY: rect.top + rect.height * y, pressure: 0.5 }));
+        event("pointerdown", 0.2, 0.3); event("pointermove", 0.5, 0.4); event("pointerup", 0.5, 0.4);
+      })()`);
+      assert.match(await evaluate('document.querySelector("#status").textContent'), /Stroke added/);
+      assert.equal(await evaluate('document.querySelector("#status").dataset.error'), "false");
+      assert.equal(await evaluate('document.querySelector("#page-preview").contentDocument.querySelectorAll("[data-annotation-id=home-boston] .annotation-stroke").length'), 1);
+
+      await evaluate('document.querySelector("#export").click()');
+      await waitFor('document.querySelector("#status").dataset.error === "true"', "export accepted a stale mark");
+      assert.match(await evaluate('document.querySelector("#status").textContent'), /Export failed:.*stale/);
+    } finally {
+      await new Promise((done) => staleServer.close(done));
+      rmSync(temporarySite, { recursive: true, force: true });
+    }
   });
 });

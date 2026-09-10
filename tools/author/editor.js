@@ -18,8 +18,13 @@ const VIEWPORTS = {
   ],
   broad: [
     { width: 768, height: 1024, label: "768 × 1024" },
-    { width: 1366, height: 768, label: "1366 × 768" },
+    { width: 1366, height: 900, label: "1366 × 900" },
     { width: 1483, height: 885, label: "1483 × 885" },
+  ],
+  compact: [
+    { width: 768, height: 720, label: "768 × 720" },
+    { width: 1366, height: 768, label: "1366 × 768" },
+    { width: 1483, height: 768, label: "1483 × 768" },
   ],
 };
 
@@ -88,6 +93,19 @@ function selectedAnnotation(create = false) {
   return annotation;
 }
 
+function fileWithFreshSiblings(target) {
+  const anchors = manifest[currentFile.route].anchors;
+  return {
+    schemaVersion: currentFile.schemaVersion,
+    route: currentFile.route,
+    annotations: currentFile.annotations.map((annotation) => (
+      annotation === target || !Object.hasOwn(anchors, annotation.anchor)
+        ? annotation
+        : { ...annotation, contentHash: anchors[annotation.anchor].contentHash }
+    )),
+  };
+}
+
 function fileStrokeCount() {
   return currentFile.annotations.reduce((total, annotation) => total + annotation.strokes.length, 0);
 }
@@ -119,7 +137,7 @@ function configureViewports(preferredWidth) {
   elements.viewport.replaceChildren();
   for (const choice of choices) elements.viewport.add(new Option(choice.label, String(choice.width)));
   const preferred = choices.find((choice) => choice.width === preferredWidth);
-  elements.viewport.value = String(preferred?.width ?? (elements.layout.value === "broad" ? 1366 : 390));
+  elements.viewport.value = String(preferred?.width ?? (elements.layout.value === "narrow" ? 390 : 1366));
   resizePreview();
 }
 
@@ -153,9 +171,9 @@ function addPreviewStyle(doc, includeAuthorStyles) {
   doc.head.append(style);
 }
 
-function createLayer(doc, annotation, editable = false) {
+function createLayer(doc, annotation) {
   const svg = doc.createElementNS(SVG_NS, "svg");
-  svg.setAttribute("class", `annotation-layer annotation-layer--${annotation.layout}${editable ? " annotation-author-canvas" : ""}`);
+  svg.setAttribute("class", `annotation-layer annotation-layer--${annotation.layout}`);
   svg.setAttribute("viewBox", "0 0 1000 1000");
   svg.setAttribute("preserveAspectRatio", "none");
   svg.setAttribute("aria-hidden", "true");
@@ -244,11 +262,15 @@ function installPointerHandlers(layer) {
     const point = pointFromEvent(layer, event);
     if (selectedTool === "eraser") {
       const target = selectedAnnotation(false);
-      if (!target) return;
+      if (!target) {
+        event.preventDefault();
+        return;
+      }
       const rect = layer.getBoundingClientRect();
-      const index = closestStrokeIndex(target.strokes, point, 16 / Math.max(rect.width, rect.height));
+      const index = closestStrokeIndex(target.strokes, point, 16, [rect.width, rect.height]);
       if (index < 0) {
         setStatus("No stroke is close enough to erase.");
+        event.preventDefault();
         return;
       }
       const before = clone(currentFile);
@@ -264,15 +286,17 @@ function installPointerHandlers(layer) {
     if (fileStrokeCount() >= ANNOTATION_LIMITS.maxStrokes) {
       replaceCurrent(before);
       setStatus(`This file has reached the ${ANNOTATION_LIMITS.maxStrokes}-stroke limit.`, true);
+      event.preventDefault();
       return;
     }
+    if (target.strokes.length === 0) target.contentHash = selectedAnchorDefinition().contentHash;
     const stroke = { tool: selectedTool, style: elements.style.value, points: [point] };
     target.strokes.push(stroke);
     const path = layer.ownerDocument.createElementNS(SVG_NS, "path");
     path.setAttribute("class", `annotation-stroke annotation-stroke--${stroke.tool}-${stroke.style}`);
     path.setAttribute("d", strokePath(stroke.points, 1000));
     layer.append(path);
-    activePointer = { id: event.pointerId, before, stroke, path };
+    activePointer = { id: event.pointerId, before, stroke, path, target };
     try { layer.setPointerCapture(event.pointerId); } catch { /* Pointer capture is best effort. */ }
     event.preventDefault();
   });
@@ -290,11 +314,11 @@ function installPointerHandlers(layer) {
 
   layer.addEventListener("pointerup", (event) => {
     if (!activePointer || event.pointerId !== activePointer.id) return;
-    const before = activePointer.before;
+    const { before, target } = activePointer;
     activePointer = null;
     try { if (layer.hasPointerCapture(event.pointerId)) layer.releasePointerCapture(event.pointerId); } catch { /* Already released. */ }
     try {
-      validateAnnotationFile(currentFile, manifest);
+      validateAnnotationFile(fileWithFreshSiblings(target), manifest);
       remember(before);
       renderPreview();
       setStatus("Stroke added. Drawing remains active.");
@@ -444,6 +468,7 @@ async function refreshManifest() {
 
 async function frameLoaded() {
   try {
+    elements["page-preview"].contentDocument.addEventListener("keydown", handleShortcut);
     const path = elements["page-preview"].contentWindow.location.pathname.replace(/^\/preview/, "") || "/";
     if (manifest[path] && path !== elements.route.value) {
       elements.route.value = path;
@@ -466,6 +491,20 @@ async function frameLoaded() {
   } catch (error) {
     setStatus(`Preview failed: ${error.message}`, true);
   }
+}
+
+function handleShortcut(event) {
+  if (!drawing || event.altKey || event.ctrlKey || event.metaKey) return;
+  const { target } = event;
+  if (typeof target?.matches === "function" && target.matches("input, select, textarea, button")) return;
+  const key = event.key.toLowerCase();
+  if (key === "escape") setDrawing(false);
+  else if (key === "p") setTool("pen");
+  else if (key === "h") setTool("highlighter");
+  else if (key === "e") setTool("eraser");
+  else if (key === "u") undo();
+  else return;
+  event.preventDefault();
 }
 
 function wireEvents() {
@@ -492,17 +531,7 @@ function wireEvents() {
   elements.export.addEventListener("click", exportFile);
   elements["import-file"].addEventListener("change", () => importFile(elements["import-file"].files[0]));
   elements["page-preview"].addEventListener("load", frameLoaded);
-  document.addEventListener("keydown", (event) => {
-    if (!drawing || event.altKey || event.ctrlKey || event.metaKey || event.target.matches("input, select, textarea, button")) return;
-    const key = event.key.toLowerCase();
-    if (key === "escape") setDrawing(false);
-    else if (key === "p") setTool("pen");
-    else if (key === "h") setTool("highlighter");
-    else if (key === "e") setTool("eraser");
-    else if (key === "u") undo();
-    else return;
-    event.preventDefault();
-  });
+  document.addEventListener("keydown", handleShortcut);
 }
 
 async function start() {

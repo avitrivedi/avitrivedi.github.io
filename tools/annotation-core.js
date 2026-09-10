@@ -7,13 +7,13 @@ export const ANNOTATION_LIMITS = Object.freeze({
   maxPoints: 12_000,
 });
 
-export const LAYOUTS = Object.freeze(["narrow", "broad"]);
+export const LAYOUTS = Object.freeze(["narrow", "broad", "compact"]);
 export const STYLES = Object.freeze({
   pen: Object.freeze(["graphite", "blue"]),
   highlighter: Object.freeze(["yellow"]),
 });
 
-export const ANNOTATION_CSS = `[data-annotation-active]{position:relative}.annotation-layer{position:absolute;z-index:2;inset:0;display:block;width:100%;height:100%;overflow:visible;pointer-events:none;user-select:none}.annotation-layer--narrow{display:none}.annotation-stroke{fill:none;stroke-linecap:round;stroke-linejoin:round;vector-effect:non-scaling-stroke}.annotation-stroke--pen-graphite{stroke:#555;stroke-width:2.25}.annotation-stroke--pen-blue{stroke:#315f9d;stroke-width:2.25}.annotation-stroke--highlighter-yellow{stroke:#d6a900;stroke-width:12;opacity:.22}@media(max-width:37.5rem){.annotation-layer--broad{display:none}.annotation-layer--narrow{display:block}}@media print{.annotation-layer{display:none!important}}@media(prefers-contrast:more){.annotation-layer{display:none}}@media(forced-colors:active){.annotation-layer{display:none!important}}`;
+export const ANNOTATION_CSS = `[data-annotation-active]{position:relative}.annotation-layer{position:absolute;z-index:2;inset:0;display:block;width:100%;height:100%;overflow:visible;pointer-events:none;user-select:none}.annotation-layer--narrow,.annotation-layer--compact{display:none}.annotation-stroke{fill:none;stroke-linecap:round;stroke-linejoin:round;vector-effect:non-scaling-stroke}.annotation-stroke--pen-graphite{stroke:#555;stroke-width:2.25}.annotation-stroke--pen-blue{stroke:#315f9d;stroke-width:2.25}.annotation-stroke--highlighter-yellow{stroke:#d6a900;stroke-width:12;opacity:.22}@media(max-width:37.5rem){.annotation-layer--broad{display:none}.annotation-layer--narrow{display:block}}@media (max-height:48rem) and (min-width:46.01rem){.annotation-layer--broad{display:none}.annotation-layer--compact{display:block}}@media print{.annotation-layer{display:none!important}}@media(prefers-contrast:more){.annotation-layer{display:none}}@media(forced-colors:active){.annotation-layer{display:none!important}}`;
 
 const FILE_KEYS = ["schemaVersion", "route", "annotations"];
 const ANNOTATION_KEYS = ["anchor", "contentHash", "layout", "strokes"];
@@ -251,13 +251,15 @@ function segmentDistanceSquared(point, start, end) {
   return (point[0] - closest[0]) ** 2 + (point[1] - closest[1]) ** 2;
 }
 
-export function closestStrokeIndex(strokes, point, radius) {
+export function closestStrokeIndex(strokes, point, radius, scale = [1, 1]) {
+  const project = ([x, y]) => [x * scale[0], y * scale[1]];
   const radiusSquared = radius ** 2;
+  const target = project(point);
   for (let strokeIndex = strokes.length - 1; strokeIndex >= 0; strokeIndex -= 1) {
-    const points = strokes[strokeIndex].points;
-    if (points.length === 1 && segmentDistanceSquared(point, points[0], points[0]) <= radiusSquared) return strokeIndex;
+    const points = strokes[strokeIndex].points.map(project);
+    if (points.length === 1 && segmentDistanceSquared(target, points[0], points[0]) <= radiusSquared) return strokeIndex;
     for (let index = 1; index < points.length; index += 1) {
-      if (segmentDistanceSquared(point, points[index - 1], points[index]) <= radiusSquared) return strokeIndex;
+      if (segmentDistanceSquared(target, points[index - 1], points[index]) <= radiusSquared) return strokeIndex;
     }
   }
   return -1;
