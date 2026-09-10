@@ -358,6 +358,43 @@ describe("local annotation editor in a real browser", { skip: unavailable, timeo
     assert.equal(await evaluate('document.querySelector("#draw-toggle").getAttribute("aria-pressed")'), "false");
   });
 
+  test("the undo shortcut during a held stroke undoes once and commits nothing", async () => {
+    if (!(await evaluate('document.querySelector("#draw-toggle").getAttribute("aria-pressed") === "true"'))) {
+      await evaluate('document.querySelector("[data-tool=pen]").click(); document.querySelector("#draw-toggle").click()');
+      await pause(100);
+    }
+    const strokes = 'document.querySelector("#page-preview").contentDocument.querySelectorAll(".annotation-author-canvas .annotation-stroke").length';
+    const before = await evaluate(strokes);
+    await evaluate(`(() => {
+      const frame = document.querySelector("#page-preview");
+      const win = frame.contentWindow;
+      const layer = frame.contentDocument.querySelector(".annotation-author-canvas");
+      const rect = layer.getBoundingClientRect();
+      const event = (type, x, y) => layer.dispatchEvent(new win.PointerEvent(type, { bubbles: true, cancelable: true, pointerId: 74, pointerType: "mouse", isPrimary: true, button: 0, clientX: rect.left + rect.width * x, clientY: rect.top + rect.height * y, pressure: 0.5 }));
+      event("pointerdown", 0.25, 0.6); event("pointermove", 0.45, 0.65); event("pointerup", 0.45, 0.65);
+    })()`);
+    assert.equal(await evaluate(strokes), before + 1);
+
+    await evaluate(`(() => {
+      const frame = document.querySelector("#page-preview");
+      const win = frame.contentWindow;
+      const doc = frame.contentDocument;
+      const layer = doc.querySelector(".annotation-author-canvas");
+      const rect = layer.getBoundingClientRect();
+      const options = { bubbles: true, cancelable: true, pointerId: 75, pointerType: "mouse", isPrimary: true, button: 0, clientX: rect.left + rect.width * 0.6, clientY: rect.top + rect.height * 0.7, pressure: 0.5 };
+      layer.dispatchEvent(new win.PointerEvent("pointerdown", options));
+      doc.dispatchEvent(new win.KeyboardEvent("keydown", { key: "u", bubbles: true, cancelable: true }));
+      layer.dispatchEvent(new win.PointerEvent("pointerup", options));
+    })()`);
+    assert.match(await evaluate('document.querySelector("#status").textContent'), /Last drawing change undone/);
+    assert.equal(await evaluate('document.querySelector("#status").dataset.error'), "false");
+    assert.equal(await evaluate(strokes), before);
+    assert.equal(await evaluate(`(() => {
+      const doc = document.querySelector("#page-preview").contentDocument;
+      return doc.querySelectorAll(".annotation-author-canvas").length;
+    })()`), 1);
+  });
+
   test("keyboard focus stays visible on every named control, including Import", async () => {
     const tab = async () => {
       for (const type of ["rawKeyDown", "keyUp"]) {

@@ -77,17 +77,21 @@ function selectedAnchorDefinition() {
   return routeDefinition().anchors[elements.anchor.value];
 }
 
+function emptyAnnotation() {
+  return {
+    anchor: elements.anchor.value,
+    contentHash: selectedAnchorDefinition().contentHash,
+    layout: elements.layout.value,
+    strokes: [],
+  };
+}
+
 function selectedAnnotation(create = false) {
   let annotation = currentFile.annotations.find((entry) => (
     entry.anchor === elements.anchor.value && entry.layout === elements.layout.value
   ));
   if (!annotation && create) {
-    annotation = {
-      anchor: elements.anchor.value,
-      contentHash: selectedAnchorDefinition().contentHash,
-      layout: elements.layout.value,
-      strokes: [],
-    };
+    annotation = emptyAnnotation();
     currentFile.annotations.push(annotation);
   }
   return annotation;
@@ -217,12 +221,7 @@ function renderPreview() {
   }
   host.classList.add("annotation-author-selected");
   host.setAttribute("data-annotation-active", "");
-  const current = selectedAnnotation(false) ?? {
-    anchor: elements.anchor.value,
-    contentHash: selectedAnchorDefinition().contentHash,
-    layout: elements.layout.value,
-    strokes: [],
-  };
+  const current = selectedAnnotation(false) ?? emptyAnnotation();
   let layer = [...host.querySelectorAll(":scope > .annotation-layer")]
     .find((candidate) => candidate.classList.contains(`annotation-layer--${elements.layout.value}`));
   if (!layer) {
@@ -278,6 +277,7 @@ function installPointerHandlers(layer) {
       remember(before);
       renderPreview();
       setStatus("Stroke erased. Drawing remains active.");
+      event.preventDefault();
       return;
     }
 
@@ -376,6 +376,7 @@ function resetModes() {
 
 async function importFile(file) {
   if (!file) return;
+  discardActiveStroke();
   try {
     if (file.size > ANNOTATION_LIMITS.maxFileBytes) throw new Error(`File exceeds the ${ANNOTATION_LIMITS.maxFileBytes}-byte limit.`);
     const text = await file.text();
@@ -397,6 +398,7 @@ async function importFile(file) {
 }
 
 function undo() {
+  discardActiveStroke();
   const previous = history().pop();
   if (!previous) return;
   replaceCurrent(previous);
@@ -406,6 +408,7 @@ function undo() {
 }
 
 function clearTarget() {
+  discardActiveStroke();
   const target = selectedAnnotation(false);
   if (!target?.strokes.length) {
     setStatus("The selected section and layout are already empty.");
@@ -420,6 +423,7 @@ function clearTarget() {
 }
 
 function beginEmpty() {
+  discardActiveStroke();
   if (currentFile.annotations.some((annotation) => annotation.strokes.length)
       && !window.confirm("Discard every in-memory annotation for this route and begin empty?")) return;
   remember(clone(currentFile));
