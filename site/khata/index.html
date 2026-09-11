@@ -14,18 +14,18 @@
     <main class="page-shell article-page" id="main-content" tabindex="-1">
       <nav class="article-nav" aria-label="Writing"><a href="../">Index</a></nav>
       <article>
-        <header class="article-header"><h1>Khata</h1><p class="article-date"><time datetime="2026-09-08">8 September, 2026</time></p></header>
+        <header class="article-header" data-annotation-id="khata-header"><h1>Khata</h1><p class="article-date"><time datetime="2026-09-08">8 September, 2026</time></p></header>
         <div class="article-body">
-          <p class="lede">Small-shop software has to shorten the path from an object on a shelf to a useful record. If entering a sale takes longer than serving the customer, the record will always lose.</p>
+          <p class="lede" data-annotation-id="khata-overview">Small-shop software has to shorten the path from an object on a shelf to a useful record. If entering a sale takes longer than serving the customer, the record will always lose.</p>
           <p>Khata is a mobile-oriented prototype for neighborhood retail. It brings barcode lookup, a simple cart, stock counts, and a short reporting view into one flow. The aim is modest: let a shop record the work already happening without turning the counter into a desk.</p>
-          <h2>The barcode is the starting point</h2>
+          <h2 data-annotation-id="khata-barcode">The barcode is the starting point</h2>
           <p>Most inventory systems begin with a catalogue and ask someone to complete it before the system becomes useful. That reverses the natural order for a small shop. The product is already in someone’s hand; its barcode is the quickest available identifier.</p>
           <p>Khata can scan a code with the camera or accept it manually. A known code retrieves the product. An unknown one opens a small step for its name and price, then creates the product and an initial inventory record together. The catalogue grows as part of ordinary work rather than as a separate setup project.</p>
           <p>The current scanner also includes a simulated input path. That makes the interaction testable on a laptop, but it should not be mistaken for proof that every camera and printed barcode works in the field.</p>
-          <h2>Keep stock connected to the sale</h2>
+          <h2 data-annotation-id="khata-stock">Keep stock connected to the sale</h2>
           <p>After lookup, a product enters a cart where quantity and unit price can be adjusted. Completing the sale writes the line items and total as one record. A database trigger then reduces stock for each item. The important design choice is not the cart itself; it is that the inventory change follows the sale instead of depending on a second piece of data entry.</p>
           <p>The inventory view stays equally direct. It supports search by product name or barcode, exposes quantity and a low-stock threshold, and separates healthy, low, and empty stock. Those states are useful because they turn a number into a decision about what to replenish.</p>
-          <h2>A report should answer the next question</h2>
+          <h2 data-annotation-id="khata-report">A report should answer the next question</h2>
           <p>The reporting screen calculates today’s revenue, the top-selling item, the number of products at risk of stocking out, and a seven-day revenue series. This is intentionally a small set. A crowded dashboard is easy to build and hard to use; a shop owner usually needs a clue about what happened and what needs attention next.</p>
           <p>Khata is a working prototype, not a claim about a deployed retail network. It uses a React interface and a hosted Postgres backend with authentication and row-level access rules. The interesting part is the shape of the loop: scan, sell, adjust stock, and read the result without translating the same event between separate tools.</p>
         </div>

@@ -642,9 +642,39 @@ describe("rendered layout in a real browser", { skip: unavailable ?? false, time
     );
   });
 
-  test("the rendered site makes no off-origin requests", limits, () => {
+  test("stable annotation anchors preserve reflow at supported widths and zoom equivalents", limits, async () => {
+    await open("/");
+    for (const [label, width, height] of [
+      ["320px", 320, 568],
+      ["390px portrait", 390, 844],
+      ["844px landscape", 844, 390],
+      ["768px", 768, 1024],
+      ["1366px", 1366, 768],
+      ["1483px", 1483, 885],
+      ["80% zoom equivalent", 1708, 960],
+      ["125% zoom equivalent", 1093, 614],
+      ["200% zoom equivalent", 683, 384],
+      ["400% zoom equivalent", 342, 192],
+    ]) {
+      await viewport(width, height, width < 600);
+      const state = await evaluate(`(() => ({
+        horizontal: document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1,
+        anchors: [...document.querySelectorAll("[data-annotation-id]")].map((node) => {
+          const rect = node.getBoundingClientRect();
+          return rect.width > 0 && rect.height > 0;
+        }),
+        layers: document.querySelectorAll(".annotation-layer").length,
+      }))()`);
+      assert.ok(state.horizontal, `${label} produced horizontal scrolling`);
+      assert.ok(state.anchors.length >= 3 && state.anchors.every(Boolean), `${label} collapsed an annotation anchor`);
+      assert.equal(state.layers, 0, `${label} unexpectedly published a sample mark`);
+    }
+  });
+
+  test("the rendered site makes no off-origin or annotation-data requests", limits, () => {
     const offOrigin = requested.filter((url) => /^https?:\/\//.test(url) && !url.startsWith(origin));
     assert.deepEqual(offOrigin, []);
+    assert.deepEqual(requested.filter((url) => /(?:annotations\/|authoring-manifest|editor\.js)/.test(url)), []);
     assert.ok(
       requested.some((url) => url === `${origin}/fonts/inter-latin-wght-normal.woff2`),
       "the local Inter font was never requested",

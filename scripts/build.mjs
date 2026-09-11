@@ -1,12 +1,15 @@
-import { cp, mkdir, rm, stat } from "node:fs/promises";
+import { cp, mkdir, rm, stat, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { generateAnnotatedPages } from "./annotation-build.mjs";
 
 const source = resolve("site");
 const destination = resolve("dist");
+const { pages } = await generateAnnotatedPages({ sourceRoot: source });
 
 await rm(destination, { recursive: true, force: true });
 await mkdir(destination, { recursive: true });
 await cp(source, destination, { recursive: true });
+for (const [page, html] of pages) await writeFile(resolve(destination, page), html);
 
 const requiredFiles = [
   "index.html",
