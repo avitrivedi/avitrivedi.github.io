@@ -380,7 +380,20 @@ describe("local annotation editor in a real browser", { skip: unavailable, timeo
       const win = frame.contentWindow;
       const layer = frame.contentDocument.querySelector(".annotation-author-canvas");
       const rect = layer.getBoundingClientRect();
-      layer.dispatchEvent(new win.PointerEvent("pointerdown", { bubbles: true, cancelable: true, pointerId: 73, pointerType: "mouse", isPrimary: true, button: 0, clientX: rect.left + rect.width * 0.3, clientY: rect.top + rect.height * 0.325 + 10, pressure: 0.5 }));
+      const options = { bubbles: true, cancelable: true, pointerId: 73, pointerType: "mouse", isPrimary: true, button: 0, clientX: rect.left + rect.width * 0.3, clientY: rect.top + rect.height * 0.325 + 10, pressure: 0.5 };
+      layer.dispatchEvent(new win.PointerEvent("pointerdown", options));
+      layer.dispatchEvent(new win.PointerEvent("pointercancel", options));
+    })()`);
+    assert.equal(await evaluate('document.querySelector("#page-preview").contentDocument.querySelectorAll("[data-annotation-id=home-introduction] > .annotation-layer--broad .annotation-stroke").length'), before + 1);
+    assert.match(await evaluate('document.querySelector("#status").textContent'), /Interrupted stroke discarded/);
+    await evaluate(`(() => {
+      const frame = document.querySelector("#page-preview");
+      const win = frame.contentWindow;
+      const layer = frame.contentDocument.querySelector(".annotation-author-canvas");
+      const rect = layer.getBoundingClientRect();
+      const options = { bubbles: true, cancelable: true, pointerId: 74, pointerType: "mouse", isPrimary: true, button: 0, clientX: rect.left + rect.width * 0.3, clientY: rect.top + rect.height * 0.325 + 10, pressure: 0.5 };
+      layer.dispatchEvent(new win.PointerEvent("pointerdown", options));
+      layer.dispatchEvent(new win.PointerEvent("pointerup", options));
     })()`);
     assert.equal(await evaluate('document.querySelector("#page-preview").contentDocument.querySelectorAll("[data-annotation-id=home-introduction] > .annotation-layer--broad .annotation-stroke").length'), before);
     await evaluate('document.querySelector("#undo").click()');
@@ -474,8 +487,28 @@ describe("local annotation editor in a real browser", { skip: unavailable, timeo
     assert.equal(await evaluate('getComputedStyle(document.querySelector(".tool-dock")).position'), "absolute");
     const lightPaper = await evaluate('getComputedStyle(document.body).backgroundColor');
     await evaluate('document.querySelector("#theme-toggle").click(); document.querySelector("#theme-toggle").click()');
+    await pause(200);
     assert.equal(await evaluate('document.body.dataset.theme'), "dark");
     assert.notEqual(await evaluate('getComputedStyle(document.body).backgroundColor'), lightPaper);
+    const actionContrasts = await evaluate(`(() => {
+      const contrast = (node) => {
+        const channels = (value) => value.match(/[\\d.]+/g).slice(0, 3).map((channel) => Number(channel) / 255);
+        const luminance = (value) => channels(value)
+          .map((channel) => channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4)
+          .reduce((total, channel, index) => total + channel * [0.2126, 0.7152, 0.0722][index], 0);
+        const style = getComputedStyle(node);
+        const values = [luminance(style.color), luminance(style.backgroundColor)].sort((a, b) => b - a);
+        return (values[0] + 0.05) / (values[1] + 0.05);
+      };
+      const draw = document.querySelector("#draw-toggle");
+      const exportButton = document.querySelector("#export");
+      const inactive = contrast(draw);
+      draw.click();
+      const active = contrast(draw);
+      draw.click();
+      return [inactive, active, contrast(exportButton)];
+    })()`);
+    for (const contrast of actionContrasts) assert.ok(contrast >= 4.5, `dark filled action contrast was ${contrast}`);
     await page.send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: "reduce" }] });
     assert.ok(Number.parseFloat(await evaluate('getComputedStyle(document.querySelector("#draw-toggle")).transitionDuration')) <= 0.001);
     await page.send("Emulation.setEmulatedMedia", { features: [{ name: "forced-colors", value: "active" }] });

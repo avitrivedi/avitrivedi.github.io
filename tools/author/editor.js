@@ -339,11 +339,8 @@ function installPointerHandlers(layer) {
         event.preventDefault();
         return;
       }
-      const before = clone(currentFile);
-      target.strokes.splice(index, 1);
-      remember(before);
-      renderPreview();
-      setStatus("Whole stroke erased. Undo is available.");
+      activePointer = { id: event.pointerId, before: clone(currentFile), eraseIndex: index, target };
+      try { layer.setPointerCapture(event.pointerId); } catch { /* Capture is best effort. */ }
       event.preventDefault();
       return;
     }
@@ -371,16 +368,24 @@ function installPointerHandlers(layer) {
 
   layer.addEventListener("pointermove", (event) => {
     if (!activePointer || event.pointerId !== activePointer.id) return;
-    appendPointerPoints(layer, event);
+    if (activePointer.stroke) appendPointerPoints(layer, event);
     event.preventDefault();
   });
 
   layer.addEventListener("pointerup", (event) => {
     if (!activePointer || event.pointerId !== activePointer.id) return;
-    appendPointerPoints(layer, event);
-    const { before, target } = activePointer;
+    if (activePointer.stroke) appendPointerPoints(layer, event);
+    const { before, eraseIndex, target } = activePointer;
     activePointer = null;
     try { if (layer.hasPointerCapture(event.pointerId)) layer.releasePointerCapture(event.pointerId); } catch { /* Already released. */ }
+    if (eraseIndex !== undefined) {
+      target.strokes.splice(eraseIndex, 1);
+      remember(before);
+      renderPreview();
+      setStatus("Whole stroke erased. Undo is available.");
+      event.preventDefault();
+      return;
+    }
     try {
       validateAnnotationFile(fileWithFreshSiblings(target), manifest);
       remember(before);

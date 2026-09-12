@@ -24,6 +24,7 @@
   --accent: #315f52;
   --accent-strong: #24493f;
   --accent-soft: #e2ede7;
+  --filled-button-ink: #fff;
   --danger: #aa4139;
   --danger-soft: #f7e8e5;
   --focus: #1478d0;
@@ -48,6 +49,7 @@
   --accent: #8fc3ae;
   --accent-strong: #b4dbc9;
   --accent-soft: #253d34;
+  --filled-button-ink: #151715;
   --danger: #f09a90;
   --danger-soft: #482c29;
   --focus: #72b7f3;
@@ -70,6 +72,7 @@
     --accent: #8fc3ae;
     --accent-strong: #b4dbc9;
     --accent-soft: #253d34;
+    --filled-button-ink: #151715;
     --danger: #f09a90;
     --danger-soft: #482c29;
     --focus: #72b7f3;
@@ -133,7 +136,7 @@ h1 { margin: 0.08rem 0 0; font-size: 1.08rem; font-weight: 640; letter-spacing: 
 }
 .icon-button { width: 44px; min-height: 44px; flex: 0 0 auto; padding: 0; }
 .quiet-button:hover:not(:disabled), .icon-button:hover:not(:disabled), .file-control:hover { border-color: var(--accent); background: var(--accent-soft); }
-.draw-button, .export-button { border-color: var(--accent-strong); color: #fff; background: var(--accent-strong); font-weight: 620; }
+.draw-button, .export-button { border-color: var(--accent-strong); color: var(--filled-button-ink); background: var(--accent-strong); font-weight: 620; }
 .draw-button:hover:not(:disabled), .export-button:hover:not(:disabled) { transform: translateY(-1px); }
 .draw-button[aria-pressed="true"] { border-color: var(--danger); background: var(--danger); }
 .danger-button { color: var(--danger); }
