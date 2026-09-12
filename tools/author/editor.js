@@ -304,12 +304,14 @@ function pointFromEvent(layer, event) {
 
 function cancelPointer(layer) {
   if (!activePointer) return;
-  const { before, id } = activePointer;
+  const { before, id, eraseIndex } = activePointer;
   activePointer = null;
   try { if (layer?.hasPointerCapture(id)) layer.releasePointerCapture(id); } catch { /* Capture may already be gone. */ }
   replaceCurrent(before);
   renderPreview();
-  setStatus("Interrupted stroke discarded. Drawing remains active.");
+  setStatus(eraseIndex !== undefined
+    ? "Erase cancelled. Drawing remains active."
+    : "Interrupted stroke discarded. Drawing remains active.");
 }
 
 function appendPointerPoints(layer, event) {

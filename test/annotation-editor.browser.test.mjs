@@ -419,7 +419,7 @@ describe("local annotation editor in a real browser", { skip: unavailable, timeo
       layer.dispatchEvent(new win.PointerEvent("pointercancel", options));
     })()`);
     assert.equal(await evaluate('document.querySelector("#page-preview").contentDocument.querySelectorAll("[data-annotation-id=home-introduction] > .annotation-layer--broad .annotation-stroke").length'), before + 1);
-    assert.match(await evaluate('document.querySelector("#status").textContent'), /Interrupted stroke discarded/);
+    assert.match(await evaluate('document.querySelector("#status").textContent'), /Erase cancelled/);
     await evaluate(`(() => {
       const frame = document.querySelector("#page-preview");
       const win = frame.contentWindow;
