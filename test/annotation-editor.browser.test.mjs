@@ -233,6 +233,12 @@ describe("local annotation editor in a real browser", { skip: unavailable, timeo
     await setFile(new URL("./fixtures/annotations/home.json", import.meta.url).pathname);
     await waitFor('document.querySelector("#status").textContent.includes("imported and validated")', "home fixture did not import");
     assert.match(await evaluate('document.querySelector("#status").textContent'), /Legacy v1 strokes were deterministically migrated/);
+    const legacyHighlighter = await evaluate(`(() => {
+      const stroke = document.querySelector("#page-preview").contentDocument.querySelector(".annotation-tool--legacy-highlighter");
+      const style = getComputedStyle(stroke);
+      return { path: stroke.getAttribute("d"), cap: style.strokeLinecap, width: style.strokeWidth, opacity: style.opacity };
+    })()`);
+    assert.deepEqual(legacyHighlighter, { path: "M 100 200 L 650 200", cap: "round", width: "12px", opacity: "0.22" });
     let visibility = await evaluate(`(() => {
       const doc = document.querySelector("#page-preview").contentDocument;
       return [...doc.querySelectorAll(".annotation-layer")].map((node) => [node.className.baseVal, getComputedStyle(node).display]);
@@ -289,7 +295,12 @@ describe("local annotation editor in a real browser", { skip: unavailable, timeo
     await waitFor('document.querySelector("#page-preview").contentDocument?.querySelector("[data-annotation-id=dandho-overview]")', "Dandho preview did not load");
     await setFile(new URL("./fixtures/annotations/dandho.json", import.meta.url).pathname);
     await waitFor('document.querySelector("#status").textContent.includes("dandho.json imported")', "Dandho fixture did not import");
-    assert.equal(await evaluate('document.querySelector("#page-preview").contentDocument.querySelectorAll(".annotation-tool--pen.annotation-color--graphite").length'), 1);
+    const legacyVisual = await evaluate(`(() => {
+      const stroke = document.querySelector("#page-preview").contentDocument.querySelector(".annotation-tool--legacy-pen.annotation-color--graphite");
+      const style = getComputedStyle(stroke);
+      return { count: stroke ? 1 : 0, path: stroke?.getAttribute("d"), color: style.stroke, width: style.strokeWidth, cap: style.strokeLinecap };
+    })()`);
+    assert.deepEqual(legacyVisual, { count: 1, path: "M 40 50 L 60 450 L 40 900", color: "rgb(85, 85, 85)", width: "2.25px", cap: "round" });
   });
 
   test("public preview matches canonical exported production geometry", async () => {
@@ -360,6 +371,24 @@ describe("local annotation editor in a real browser", { skip: unavailable, timeo
       const event = (type, x, y) => layer.dispatchEvent(new win.PointerEvent(type, { bubbles: true, cancelable: true, pointerId: 71, pointerType: "mouse", isPrimary: true, button: 0, clientX: rect.left + rect.width * x, clientY: rect.top + rect.height * y, pressure: 0.5 }));
       event("pointerdown", 0.2, 0.3); event("pointermove", 0.4, 0.35); event("pointerup", 0.4, 0.35);
     })()`);
+    assert.equal(await evaluate('document.querySelector("#page-preview").contentDocument.querySelectorAll("[data-annotation-id=home-introduction] > .annotation-layer--broad .annotation-stroke").length'), before + 1);
+
+    await evaluate(`(() => {
+      const frame = document.querySelector("#page-preview");
+      const win = frame.contentWindow;
+      const layer = frame.contentDocument.querySelector(".annotation-author-canvas");
+      const rect = layer.getBoundingClientRect();
+      const primary = { bubbles: true, cancelable: true, pointerId: 76, pointerType: "pen", isPrimary: true, button: 0, clientX: rect.left + rect.width * 0.45, clientY: rect.top + rect.height * 0.45, pressure: 0.7 };
+      const secondary = { ...primary, pointerId: 77, isPrimary: false };
+      layer.dispatchEvent(new win.PointerEvent("pointerdown", primary));
+      layer.dispatchEvent(new win.PointerEvent("pointercancel", secondary));
+      layer.dispatchEvent(new win.PointerEvent("lostpointercapture", secondary));
+      layer.dispatchEvent(new win.PointerEvent("pointermove", { ...primary, clientX: rect.left + rect.width * 0.55 }));
+      layer.dispatchEvent(new win.PointerEvent("pointerup", { ...primary, clientX: rect.left + rect.width * 0.55 }));
+    })()`);
+    assert.equal(await evaluate('document.querySelector("#page-preview").contentDocument.querySelectorAll("[data-annotation-id=home-introduction] > .annotation-layer--broad .annotation-stroke").length'), before + 2);
+    assert.doesNotMatch(await evaluate('document.querySelector("#status").textContent'), /Interrupted stroke discarded/);
+    await evaluate('document.querySelector("#undo").click()');
     assert.equal(await evaluate('document.querySelector("#page-preview").contentDocument.querySelectorAll("[data-annotation-id=home-introduction] > .annotation-layer--broad .annotation-stroke").length'), before + 1);
 
     await evaluate(`(() => {
@@ -697,7 +726,7 @@ describe("local annotation editor in a real browser", { skip: unavailable, timeo
     await page.send("Emulation.setScriptExecutionDisabled", { value: true });
     await page.send("Page.navigate", { url: `${fixtureOrigin}/dandho/` });
     await waitFor('document.querySelector("h1")?.textContent === "Dandho"', "no-JS generated Dandho fixture did not load");
-    assert.equal(await evaluate('document.querySelectorAll(".annotation-tool--pen.annotation-color--graphite").length'), 1);
+    assert.equal(await evaluate('document.querySelectorAll(".annotation-tool--legacy-pen.annotation-color--graphite").length'), 1);
     assert.equal(await evaluate('document.querySelectorAll(".annotation-color--blue, .annotation-color--yellow").length'), 0);
     assert.ok(await evaluate('document.querySelector(".article-body").innerText.length > 2000'));
     await evaluate('document.body.style.setProperty("font-family", "serif", "important")');

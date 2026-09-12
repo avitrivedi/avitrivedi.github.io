@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test from "node:test";
 import {
+  ANNOTATION_CSS,
   ANNOTATION_LIMITS,
   AnnotationValidationError,
   LAYOUTS,
@@ -12,7 +13,9 @@ import {
   closestStrokeIndex,
   reconcileAnnotationHashes,
   serializeAnnotationFile,
+  strokeClassNames,
   strokePath,
+  strokePathForStroke,
   validateAnnotationFile,
 } from "../tools/annotation-core.js";
 import {
@@ -117,32 +120,43 @@ test("strict validation accepts every preset and deterministic serialization is 
   assert.equal(Object.is(canonicalizeAnnotationFile(reversed).annotations[1].strokes[0].points[0][1], -0), false);
 });
 
-test("legacy v1 files migrate deterministically without changing their visual defaults", () => {
+test("legacy v1 files migrate deterministically without changing their rendering", () => {
   const legacy = legacyFile({
     annotations: [
-      legacyFile().annotations[0],
+      {
+        ...legacyFile().annotations[0],
+        strokes: [{ tool: "pen", style: "graphite", points: [[0.1, 0.2, 0], [0.3, 0.4, 1], [0.2, 0.5, 0.2]] }],
+      },
       {
         anchor: "home-writing",
         contentHash: manifest["/"].anchors["home-writing"].contentHash,
         layout: "narrow",
-        strokes: [{ tool: "highlighter", style: "yellow", points: [[0.2, 0.3, 0.7]] }],
+        strokes: [{ tool: "highlighter", style: "yellow", points: [[0.2, 0.3, 0.7], [0.6, 0.3, 0.2]] }],
       },
     ],
   });
   const migrated = validateAnnotationFile(legacy, manifest);
   assert.equal(migrated.schemaVersion, 2);
   assert.deepEqual(migrated.annotations[0].strokes[0], {
-    tool: "pen", style: "graphite", width: 2.25, opacity: 1, points: [[0.1, 0.2, 0.5], [0.3, 0.4, 0.5]],
+    tool: "legacy-pen", style: "graphite", width: 2.25, opacity: 1,
+    points: [[0.1, 0.2, 0.5], [0.3, 0.4, 0.5], [0.2, 0.5, 0.5]],
   });
   assert.deepEqual(migrated.annotations[1].strokes[0], {
-    tool: "highlighter", style: "yellow", width: 12, opacity: 0.22, points: [[0.2, 0.3, 0.7]],
+    tool: "legacy-highlighter", style: "yellow", width: 12, opacity: 0.22,
+    points: [[0.2, 0.3, 0.7], [0.6, 0.3, 0.2]],
   });
   const rendered = renderRouteAnnotations(readFileSync(resolve(siteRoot, "index.html"), "utf8"), migrated, ANNOTATION_ROUTES[0]);
-  assert.match(rendered, /annotation-tool--pen[^"]*annotation-pressure--2/);
-  assert.match(rendered, /annotation-tool--highlighter[^"]*annotation-stroke--singleton/);
+  assert.equal(strokePathForStroke(migrated.annotations[0].strokes[0], 1000), "M 100 200 L 300 400 L 200 500");
+  assert.equal(strokePathForStroke(migrated.annotations[1].strokes[0], 1000), "M 200 300 L 600 300");
+  assert.match(strokeClassNames(migrated.annotations[0].strokes[0]), /annotation-tool--legacy-pen.*annotation-pressure--fixed/);
+  assert.match(strokeClassNames(migrated.annotations[1].strokes[0]), /annotation-tool--legacy-highlighter.*annotation-pressure--fixed/);
+  assert.match(ANNOTATION_CSS, /legacy-pen\.annotation-color--graphite\{stroke:#555\}/);
+  assert.match(ANNOTATION_CSS, /legacy-pen\.annotation-color--blue\{stroke:#315f9d\}/);
+  assert.match(rendered, /annotation-tool--legacy-pen[^>]*d="M 100 200 L 300 400 L 200 500"/);
+  assert.match(rendered, /annotation-tool--legacy-highlighter[^>]*d="M 200 300 L 600 300"/);
   const once = serializeAnnotationFile(legacy, manifest);
   assert.equal(once, serializeAnnotationFile(JSON.parse(once), manifest));
-  assert.equal(JSON.parse(once).schemaVersion, 2);
+  assert.deepEqual(JSON.parse(once), migrated);
 });
 
 test("serialization drops cleared targets so they cannot go stale in the repository", () => {
@@ -195,6 +209,9 @@ test("validation rejects unknown schema, routes, anchors, tools, styles, and fie
   rejects(changed(validFile(), (file) => { file.annotations[0].strokes[0].tool = "spray"; }), /tool is unknown/);
   rejects(changed(validFile(), (file) => { file.annotations[0].strokes[0].style = "#fff"; }), /style is not allowed/);
   rejects(changed(validFile(), (file) => { file.annotations[0].strokes[0].width = 2.3; }), /width is not allowed/);
+  rejects(changed(validFile(), (file) => {
+    Object.assign(file.annotations[0].strokes[0], { tool: "legacy-pen", width: 3.5 });
+  }), /width is not allowed for legacy-pen/);
   rejects(changed(validFile(), (file) => { file.annotations[0].strokes[0].opacity = 0.81; }), /opacity is not allowed/);
   rejects(changed(validFile(), (file) => { file.annotations[0].strokes[0].width = "url(javascript:alert(1))"; }), /width is not allowed/);
   rejects({ ...validFile(), rawSvg: "<svg onload=alert(1)>" }, /must contain only/);
@@ -262,10 +279,10 @@ test("fixture data generates inert, allowlisted SVG isolated to each route", asy
   assert.match(home, /annotation-layer--broad/);
   assert.match(home, /annotation-layer--narrow/);
   assert.match(home, /aria-hidden="true" focusable="false"/);
-  assert.match(home, /<path class="annotation-stroke annotation-tool--pen annotation-color--blue annotation-width--225 annotation-opacity--100 annotation-pressure--2"/);
-  assert.match(home, /<path class="annotation-stroke annotation-tool--highlighter annotation-color--yellow annotation-width--1200 annotation-opacity--22 annotation-pressure--fixed"/);
-  assert.doesNotMatch(home, /annotation-tool--pen annotation-color--graphite/);
-  assert.match(dandho, /annotation-tool--pen annotation-color--graphite/);
+  assert.match(home, /<path class="annotation-stroke annotation-tool--legacy-pen annotation-color--blue annotation-width--225 annotation-opacity--100 annotation-pressure--fixed"/);
+  assert.match(home, /<path class="annotation-stroke annotation-tool--legacy-highlighter annotation-color--yellow annotation-width--1200 annotation-opacity--22 annotation-pressure--fixed"/);
+  assert.doesNotMatch(home, /annotation-tool--legacy-pen annotation-color--graphite/);
+  assert.match(dandho, /annotation-tool--legacy-pen annotation-color--graphite/);
   assert.doesNotMatch(dandho, /<path[^>]+annotation-color--(?:blue|yellow)/);
   assert.doesNotMatch(khata, /annotation-layer/);
   for (const html of [home, dandho]) {
@@ -308,6 +325,9 @@ test("the renderer uses deterministic finite paths and eraser hit testing prefer
   const curved = [{ points: [[0, 0, 0.5], [1, 1, 0.5], [0, 1, 0.5]] }];
   assert.equal(strokePath(curved[0].points, 1000), "M 0 0 L 500 500 Q 1000 1000 0 1000");
   assert.equal(closestStrokeIndex(curved, [0.625, 0.875], 18, [1000, 1000]), 0);
+  const legacyLinear = [{ tool: "legacy-pen", points: curved[0].points }];
+  assert.equal(strokePathForStroke(legacyLinear[0], 1000), "M 0 0 L 1000 1000 L 0 1000");
+  assert.equal(closestStrokeIndex(legacyLinear, [1, 1], 18, [1000, 1000]), 0);
 });
 
 test("eraser hit testing measures a pixel radius on both axes of a non-square section", () => {

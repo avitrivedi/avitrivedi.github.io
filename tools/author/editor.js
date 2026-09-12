@@ -9,7 +9,7 @@ import {
   reconcileAnnotationHashes,
   serializeAnnotationFile,
   strokeClassNames,
-  strokePath,
+  strokePathForStroke,
   validateAnnotationFile,
   validateManifest,
 } from "/annotation-core.js";
@@ -243,7 +243,7 @@ function createLayer(doc, annotation) {
   for (const stroke of annotation.strokes) {
     const path = doc.createElementNS(SVG_NS, "path");
     path.setAttribute("class", strokeClassNames(stroke));
-    path.setAttribute("d", strokePath(stroke.points, 1000));
+    path.setAttribute("d", strokePathForStroke(stroke, 1000));
     svg.append(path);
   }
   return svg;
@@ -304,9 +304,9 @@ function pointFromEvent(layer, event) {
 
 function cancelPointer(layer) {
   if (!activePointer) return;
-  const before = activePointer.before;
-  try { if (layer?.hasPointerCapture(activePointer.id)) layer.releasePointerCapture(activePointer.id); } catch { /* Capture may already be gone. */ }
+  const { before, id } = activePointer;
   activePointer = null;
+  try { if (layer?.hasPointerCapture(id)) layer.releasePointerCapture(id); } catch { /* Capture may already be gone. */ }
   replaceCurrent(before);
   renderPreview();
   setStatus("Interrupted stroke discarded. Drawing remains active.");
@@ -321,7 +321,7 @@ function appendPointerPoints(layer, event) {
     if (activePointer.stroke.points.length >= ANNOTATION_LIMITS.maxPointsPerStroke) break;
     activePointer.stroke.points.push(point);
   }
-  activePointer.path.setAttribute("d", strokePath(activePointer.stroke.points, 1000));
+  activePointer.path.setAttribute("d", strokePathForStroke(activePointer.stroke, 1000));
   activePointer.path.setAttribute("class", strokeClassNames(activePointer.stroke));
 }
 
@@ -359,7 +359,7 @@ function installPointerHandlers(layer) {
     target.strokes.push(stroke);
     const path = layer.ownerDocument.createElementNS(SVG_NS, "path");
     path.setAttribute("class", strokeClassNames(stroke));
-    path.setAttribute("d", strokePath(stroke.points, 1000));
+    path.setAttribute("d", strokePathForStroke(stroke, 1000));
     layer.append(path);
     activePointer = { id: event.pointerId, before, stroke, path, target };
     try { layer.setPointerCapture(event.pointerId); } catch { /* Capture is best effort. */ }
@@ -398,8 +398,12 @@ function installPointerHandlers(layer) {
     }
     event.preventDefault();
   });
-  layer.addEventListener("pointercancel", () => cancelPointer(layer));
-  layer.addEventListener("lostpointercapture", () => cancelPointer(layer));
+  const cancelMatchingPointer = (event) => {
+    if (!activePointer || event.pointerId !== activePointer.id) return;
+    cancelPointer(layer);
+  };
+  layer.addEventListener("pointercancel", cancelMatchingPointer);
+  layer.addEventListener("lostpointercapture", cancelMatchingPointer);
 }
 
 function discardActiveStroke() {

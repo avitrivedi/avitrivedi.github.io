@@ -73,6 +73,24 @@ const OPACITY_CLASS = new Map([
   [0.82, "annotation-opacity--82"], [0.9, "annotation-opacity--90"], [1, "annotation-opacity--100"],
 ]);
 
+const LEGACY_RENDER_PRESETS = Object.freeze({
+  "legacy-pen": Object.freeze({
+    styles: Object.freeze(["graphite", "blue"]),
+    widths: Object.freeze([2.25]),
+    opacities: Object.freeze([1]),
+    pressure: false,
+    linear: true,
+  }),
+  "legacy-highlighter": Object.freeze({
+    styles: Object.freeze(["yellow"]),
+    widths: Object.freeze([12]),
+    opacities: Object.freeze([0.22]),
+    pressure: false,
+    linear: true,
+  }),
+});
+const RENDER_PRESETS = Object.freeze({ ...TOOL_PRESETS, ...LEGACY_RENDER_PRESETS });
+
 const colorRules = Object.entries(STYLE_COLORS)
   .map(([style, color]) => `.annotation-color--${style}{stroke:${color}}`)
   .join("");
@@ -83,7 +101,7 @@ const opacityRules = [...OPACITY_CLASS.entries()]
   .map(([opacity, className]) => `.${className}{opacity:${opacity}}`)
   .join("");
 
-export const ANNOTATION_CSS = `[data-annotation-active]{position:relative}.annotation-layer{position:absolute;z-index:2;inset:0;display:block;width:100%;height:100%;overflow:visible;pointer-events:none;user-select:none}.annotation-layer--narrow,.annotation-layer--compact{display:none}.annotation-stroke{fill:none;stroke-width:calc(var(--annotation-width)*var(--annotation-pressure,1));stroke-linecap:round;stroke-linejoin:round;vector-effect:non-scaling-stroke}.annotation-tool--pencil{stroke-linecap:round}.annotation-tool--marker{stroke-linecap:square}.annotation-tool--highlighter{stroke-linecap:butt}.annotation-stroke--singleton{stroke-linecap:round}${colorRules}${widthRules}${opacityRules}.annotation-pressure--0{--annotation-pressure:.72}.annotation-pressure--1{--annotation-pressure:.86}.annotation-pressure--2{--annotation-pressure:1}.annotation-pressure--3{--annotation-pressure:1.13}.annotation-pressure--4{--annotation-pressure:1.26}.annotation-pressure--fixed{--annotation-pressure:1}@media(max-width:37.5rem){.annotation-layer--broad{display:none}.annotation-layer--narrow{display:block}}@media (max-height:48rem) and (min-width:46.01rem){.annotation-layer--broad{display:none}.annotation-layer--compact{display:block}}@media print{.annotation-layer{display:none!important}}@media(prefers-contrast:more){.annotation-layer{display:none}}@media(forced-colors:active){.annotation-layer{display:none!important}}`;
+export const ANNOTATION_CSS = `[data-annotation-active]{position:relative}.annotation-layer{position:absolute;z-index:2;inset:0;display:block;width:100%;height:100%;overflow:visible;pointer-events:none;user-select:none}.annotation-layer--narrow,.annotation-layer--compact{display:none}.annotation-stroke{fill:none;stroke-width:calc(var(--annotation-width)*var(--annotation-pressure,1));stroke-linecap:round;stroke-linejoin:round;vector-effect:non-scaling-stroke}.annotation-tool--pencil{stroke-linecap:round}.annotation-tool--marker{stroke-linecap:square}.annotation-tool--highlighter{stroke-linecap:butt}.annotation-stroke--singleton{stroke-linecap:round}${colorRules}.annotation-tool--legacy-pen.annotation-color--graphite{stroke:#555}.annotation-tool--legacy-pen.annotation-color--blue{stroke:#315f9d}${widthRules}${opacityRules}.annotation-pressure--0{--annotation-pressure:.72}.annotation-pressure--1{--annotation-pressure:.86}.annotation-pressure--2{--annotation-pressure:1}.annotation-pressure--3{--annotation-pressure:1.13}.annotation-pressure--4{--annotation-pressure:1.26}.annotation-pressure--fixed{--annotation-pressure:1}@media(max-width:37.5rem){.annotation-layer--broad{display:none}.annotation-layer--narrow{display:block}}@media (max-height:48rem) and (min-width:46.01rem){.annotation-layer--broad{display:none}.annotation-layer--compact{display:block}}@media print{.annotation-layer{display:none!important}}@media(prefers-contrast:more){.annotation-layer{display:none}}@media(forced-colors:active){.annotation-layer{display:none!important}}`;
 
 const FILE_KEYS = ["schemaVersion", "route", "annotations"];
 const ANNOTATION_KEYS = ["anchor", "contentHash", "layout", "strokes"];
@@ -93,8 +111,8 @@ const HASH_PATTERN = /^sha256:[a-f0-9]{64}$/;
 const SAFE_KEY_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const LEGACY_STYLES = Object.freeze({ pen: Object.freeze(["graphite", "blue"]), highlighter: Object.freeze(["yellow"]) });
 const LEGACY_DEFAULTS = Object.freeze({
-  pen: Object.freeze({ width: 2.25, opacity: 1 }),
-  highlighter: Object.freeze({ width: 12, opacity: 0.22 }),
+  pen: Object.freeze({ tool: "legacy-pen", width: 2.25, opacity: 1 }),
+  highlighter: Object.freeze({ tool: "legacy-highlighter", width: 12, opacity: 0.22 }),
 });
 
 export class AnnotationValidationError extends Error {
@@ -188,8 +206,8 @@ export function validateAnnotationFile(value, manifest, options = {}) {
         if (!Object.hasOwn(LEGACY_STYLES, stroke.tool)) fail(`${strokeLocation}.tool is unknown`);
         if (typeof stroke.style !== "string" || !LEGACY_STYLES[stroke.tool].includes(stroke.style)) fail(`${strokeLocation}.style is not allowed for ${stroke.tool}`);
       } else {
-        if (!Object.hasOwn(TOOL_PRESETS, stroke.tool)) fail(`${strokeLocation}.tool is unknown`);
-        const preset = TOOL_PRESETS[stroke.tool];
+        if (!Object.hasOwn(RENDER_PRESETS, stroke.tool)) fail(`${strokeLocation}.tool is unknown`);
+        const preset = RENDER_PRESETS[stroke.tool];
         if (typeof stroke.style !== "string" || !preset.styles.includes(stroke.style)) fail(`${strokeLocation}.style is not allowed for ${stroke.tool}`);
         if (!includesExact(preset.widths, stroke.width)) fail(`${strokeLocation}.width is not allowed for ${stroke.tool}`);
         if (!includesExact(preset.opacities, stroke.opacity)) fail(`${strokeLocation}.opacity is not allowed for ${stroke.tool}`);
@@ -213,7 +231,7 @@ export function validateAnnotationFile(value, manifest, options = {}) {
       const migratedPoints = legacy && stroke.tool === "pen"
         ? points.map(([x, y]) => [x, y, 0.5])
         : points;
-      return { tool: stroke.tool, style: stroke.style, width: migrated.width, opacity: migrated.opacity, points: migratedPoints };
+      return { tool: migrated.tool, style: stroke.style, width: migrated.width, opacity: migrated.opacity, points: migratedPoints };
     });
     return { anchor: annotation.anchor, contentHash: annotation.contentHash, layout: annotation.layout, strokes };
   });
@@ -318,15 +336,26 @@ export function strokePath(points, scale = 1) {
   }, `M ${first[0]} ${first[1]}`);
 }
 
+export function strokePathForStroke(stroke, scale = 1) {
+  const preset = RENDER_PRESETS[stroke.tool];
+  if (!preset) fail("unsafe unvalidated stroke tool reached the renderer");
+  if (!preset.linear) return strokePath(stroke.points, scale);
+  const coordinates = stroke.points.map(([x, y]) => [rounded(x * scale), rounded(y * scale)]);
+  const [first, ...rest] = coordinates;
+  if (!first) return "";
+  if (rest.length === 0) return `M ${first[0]} ${first[1]} l 0.01 0`;
+  return `M ${first[0]} ${first[1]}${rest.map(([x, y]) => ` L ${x} ${y}`).join("")}`;
+}
+
 export function strokePressureClass(stroke) {
-  if (!TOOL_PRESETS[stroke.tool]?.pressure) return "annotation-pressure--fixed";
+  if (!RENDER_PRESETS[stroke.tool]?.pressure) return "annotation-pressure--fixed";
   const average = stroke.points.reduce((sum, point) => sum + point[2], 0) / stroke.points.length;
   const band = Math.max(0, Math.min(4, Math.round(average * 4)));
   return `annotation-pressure--${band}`;
 }
 
 export function strokeClassNames(stroke) {
-  const preset = TOOL_PRESETS[stroke.tool];
+  const preset = RENDER_PRESETS[stroke.tool];
   if (!preset || !preset.styles.includes(stroke.style)) fail("unsafe unvalidated stroke style reached the renderer");
   const width = WIDTH_CLASS.get(stroke.width);
   const opacity = OPACITY_CLASS.get(stroke.opacity);
@@ -379,9 +408,13 @@ export function closestStrokeIndex(strokes, point, radius, scale = [1, 1]) {
   const radiusSquared = radius ** 2;
   const target = project(point);
   for (let strokeIndex = strokes.length - 1; strokeIndex >= 0; strokeIndex -= 1) {
-    const points = strokes[strokeIndex].points.map(project);
+    const stroke = strokes[strokeIndex];
+    const points = stroke.points.map(project);
     if (points.length === 1 && segmentDistanceSquared(target, points[0], points[0]) <= radiusSquared) return strokeIndex;
-    for (const segment of strokeSegments(points)) {
+    const segments = RENDER_PRESETS[stroke.tool]?.linear
+      ? points.slice(1).map((end, index) => ({ type: "line", start: points[index], end }))
+      : strokeSegments(points);
+    for (const segment of segments) {
       const distance = segment.type === "line"
         ? segmentDistanceSquared(target, segment.start, segment.end)
         : quadraticDistanceSquared(target, segment, radius);

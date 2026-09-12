@@ -6,7 +6,7 @@ import {
   ANNOTATION_LIMITS,
   LAYOUTS,
   strokeClassNames,
-  strokePath,
+  strokePathForStroke,
   validateAnnotationFile,
   validateManifest,
 } from "../tools/annotation-core.js";
@@ -129,7 +129,7 @@ function svgFor(annotation) {
   if (!LAYOUTS.includes(annotation.layout)) throw new Error("unsafe unvalidated layout reached the renderer");
   const paths = annotation.strokes.map((stroke) => {
     const classes = strokeClassNames(stroke);
-    const path = strokePath(stroke.points, 1000);
+    const path = strokePathForStroke(stroke, 1000);
     return `<path class="${classes}" d="${path}"></path>`;
   }).join("");
   return `<svg class="annotation-layer annotation-layer--${annotation.layout}" viewBox="0 0 1000 1000" preserveAspectRatio="none" aria-hidden="true" focusable="false">${paths}</svg>`;
