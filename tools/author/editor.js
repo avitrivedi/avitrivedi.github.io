@@ -621,8 +621,9 @@ function handleShortcut(event) {
 }
 
 function cycleTheme() {
-  const current = document.body.dataset.theme;
+  const current = document.documentElement.dataset.theme;
   const next = THEME_ORDER[(THEME_ORDER.indexOf(current) + 1) % THEME_ORDER.length];
+  document.documentElement.dataset.theme = next;
   document.body.dataset.theme = next;
   elements["theme-toggle"].setAttribute("aria-label", `Theme: ${next === "system" ? "follow system" : next}`);
   setStatus(`Editor theme set to ${next === "system" ? "follow your system" : next}. The public page preview is unchanged.`);

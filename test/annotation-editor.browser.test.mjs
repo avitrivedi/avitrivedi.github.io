@@ -517,13 +517,39 @@ describe("local annotation editor in a real browser", { skip: unavailable, timeo
 
   test("the editor adapts its tool surface and honors theme, reduced motion, and forced colors", async () => {
     await page.send("Emulation.setDeviceMetricsOverride", { width: 1483, height: 885, deviceScaleFactor: 1, mobile: false });
-    await page.send("Emulation.setEmulatedMedia", { features: [] });
+    await page.send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: "dark" }] });
     assert.equal(await evaluate('getComputedStyle(document.querySelector(".tool-dock")).position'), "absolute");
-    const lightPaper = await evaluate('getComputedStyle(document.body).backgroundColor');
-    await evaluate('document.querySelector("#theme-toggle").click(); document.querySelector("#theme-toggle").click()');
+    const explicitLight = await evaluate(`(() => {
+      document.querySelector("#theme-toggle").click();
+      const root = document.documentElement;
+      return {
+        rootTheme: root.dataset.theme,
+        bodyTheme: document.body.dataset.theme,
+        rootScheme: getComputedStyle(root).colorScheme,
+        controlScheme: getComputedStyle(document.querySelector("#width")).colorScheme,
+        rootPaper: getComputedStyle(root).backgroundColor,
+        bodyPaper: getComputedStyle(document.body).backgroundColor,
+      };
+    })()`);
+    assert.equal(explicitLight.rootTheme, "light");
+    assert.equal(explicitLight.bodyTheme, "light");
+    assert.equal(explicitLight.rootScheme, "light");
+    assert.equal(explicitLight.controlScheme, "light");
+    assert.equal(explicitLight.rootPaper, explicitLight.bodyPaper);
+    await evaluate('document.querySelector("#theme-toggle").click()');
     await pause(200);
-    assert.equal(await evaluate('document.body.dataset.theme'), "dark");
-    assert.notEqual(await evaluate('getComputedStyle(document.body).backgroundColor'), lightPaper);
+    const explicitDark = await evaluate(`(() => ({
+      rootTheme: document.documentElement.dataset.theme,
+      bodyTheme: document.body.dataset.theme,
+      rootScheme: getComputedStyle(document.documentElement).colorScheme,
+      controlScheme: getComputedStyle(document.querySelector("#width")).colorScheme,
+      rootPaper: getComputedStyle(document.documentElement).backgroundColor,
+    }))()`);
+    assert.equal(explicitDark.rootTheme, "dark");
+    assert.equal(explicitDark.bodyTheme, "dark");
+    assert.equal(explicitDark.rootScheme, "dark");
+    assert.equal(explicitDark.controlScheme, "dark");
+    assert.notEqual(explicitDark.rootPaper, explicitLight.rootPaper);
     const actionContrasts = await evaluate(`(() => {
       const contrast = (node) => {
         const channels = (value) => value.match(/[\\d.]+/g).slice(0, 3).map((channel) => Number(channel) / 255);
