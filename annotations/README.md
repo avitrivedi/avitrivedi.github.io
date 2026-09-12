@@ -50,7 +50,7 @@ No other keys or values are accepted. In particular, route files cannot carry HT
 
 ### Version 1 compatibility
 
-The original editor exported schema v1 strokes with `tool`, `style`, and `points`. Those files remain valid publication inputs and import without manual edits. The validator deterministically migrates `pen` + `graphite`/`blue` to width `2.25`, opacity `1`, and `highlighter` + `yellow` to width `12`, opacity `0.22`; these are their original public values. The studio reports the in-memory migration, and the next export writes canonical schema v2. Unknown versions and non-original v1 tool/style pairs fail with an explicit validation error. Existing empty v1 route files therefore continue to build byte-for-byte unchanged.
+The original editor exported schema v1 strokes with `tool`, `style`, and `points`. Those files remain valid publication inputs and import without manual edits. The validator deterministically migrates `pen` + `graphite`/`blue` to width `2.25`, opacity `1`, and `highlighter` + `yellow` to width `12`, opacity `0.22`; these are their original public values. Because v1 rendering ignored recorded pen pressure, migration normalizes legacy pen pressure to `0.5` so its fixed `2.25px` public weight stays unchanged. The studio reports the in-memory migration, and the next export writes canonical schema v2. Unknown versions and non-original v1 tool/style pairs fail with an explicit validation error. Existing empty v1 route files therefore continue to build byte-for-byte unchanged.
 
 ## Layout scopes
 

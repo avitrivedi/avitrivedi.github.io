@@ -50,7 +50,7 @@ function legacyFile(overrides = {}) {
       anchor: "home-introduction",
       contentHash: hash,
       layout: "broad",
-      strokes: [{ tool: "pen", style: "graphite", points: [[0.1, 0.2, 0.5], [0.3, 0.4, 0.6]] }],
+      strokes: [{ tool: "pen", style: "graphite", points: [[0.1, 0.2, 0], [0.3, 0.4, 0]] }],
     }],
     ...overrides,
   };
@@ -132,12 +132,13 @@ test("legacy v1 files migrate deterministically without changing their visual de
   const migrated = validateAnnotationFile(legacy, manifest);
   assert.equal(migrated.schemaVersion, 2);
   assert.deepEqual(migrated.annotations[0].strokes[0], {
-    tool: "pen", style: "graphite", width: 2.25, opacity: 1, points: [[0.1, 0.2, 0.5], [0.3, 0.4, 0.6]],
+    tool: "pen", style: "graphite", width: 2.25, opacity: 1, points: [[0.1, 0.2, 0.5], [0.3, 0.4, 0.5]],
   });
   assert.deepEqual(migrated.annotations[1].strokes[0], {
     tool: "highlighter", style: "yellow", width: 12, opacity: 0.22, points: [[0.2, 0.3, 0.7]],
   });
   const rendered = renderRouteAnnotations(readFileSync(resolve(siteRoot, "index.html"), "utf8"), migrated, ANNOTATION_ROUTES[0]);
+  assert.match(rendered, /annotation-tool--pen[^"]*annotation-pressure--2/);
   assert.match(rendered, /annotation-tool--highlighter[^"]*annotation-stroke--singleton/);
   const once = serializeAnnotationFile(legacy, manifest);
   assert.equal(once, serializeAnnotationFile(JSON.parse(once), manifest));

@@ -210,7 +210,10 @@ export function validateAnnotationFile(value, manifest, options = {}) {
         return point;
       });
       const migrated = legacy ? LEGACY_DEFAULTS[stroke.tool] : stroke;
-      return { tool: stroke.tool, style: stroke.style, width: migrated.width, opacity: migrated.opacity, points };
+      const migratedPoints = legacy && stroke.tool === "pen"
+        ? points.map(([x, y]) => [x, y, 0.5])
+        : points;
+      return { tool: stroke.tool, style: stroke.style, width: migrated.width, opacity: migrated.opacity, points: migratedPoints };
     });
     return { anchor: annotation.anchor, contentHash: annotation.contentHash, layout: annotation.layout, strokes };
   });
