@@ -709,6 +709,13 @@ describe("local annotation editor in a real browser", { skip: unavailable, timeo
         "the editor did not report the edited anchor as stale",
       );
 
+      await evaluate('document.querySelector("#public-preview").click()');
+      assert.equal(await evaluate('document.querySelector("#public-preview").getAttribute("aria-pressed")'), "false");
+      assert.equal(await evaluate('document.body.dataset.publicPreview'), "false");
+      assert.equal(await evaluate('document.querySelector("#status").dataset.error'), "true");
+      assert.match(await evaluate('document.querySelector("#status").textContent'), /Public preview unavailable:.*stale/);
+      assert.ok(await evaluate('document.querySelector("#page-preview").contentDocument.querySelector(".annotation-author-selected") !== null'));
+
       await evaluate(`(() => {
         const anchor = document.querySelector("#anchor");
         anchor.value = "home-boston";

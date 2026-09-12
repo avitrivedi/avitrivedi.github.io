@@ -4,7 +4,6 @@ import {
   LEGACY_ANNOTATION_SCHEMA_VERSION,
   STYLE_COLORS,
   TOOL_PRESETS,
-  canonicalizeAnnotationFile,
   closestStrokeIndex,
   createEmptyAnnotationFile,
   reconcileAnnotationHashes,
@@ -257,16 +256,18 @@ function cleanPreview(doc) {
   for (const node of doc.querySelectorAll("style[data-annotation-author-style]")) node.remove();
 }
 
+function publicPreviewFile() {
+  return JSON.parse(serializeAnnotationFile(currentFile, manifest));
+}
+
 function renderPreview() {
   const frame = elements["page-preview"];
   const doc = frame.contentDocument;
   if (!doc?.documentElement || !manifest) return;
+  const previewFile = publicPreview ? publicPreviewFile() : currentFile;
   cleanPreview(doc);
   addPreviewStyle(doc, !publicPreview);
-  const annotations = publicPreview
-    ? canonicalizeAnnotationFile(currentFile).annotations
-    : currentFile.annotations;
-  for (const annotation of annotations) {
+  for (const annotation of previewFile.annotations) {
     if (annotation.strokes.length === 0) continue;
     const host = doc.querySelector(`[data-annotation-id="${annotation.anchor}"]`);
     if (!host) continue;
@@ -416,8 +417,17 @@ function setDrawing(next) {
 }
 
 function setPublicPreview(next) {
-  publicPreview = Boolean(next);
-  if (publicPreview) setDrawing(false);
+  const enable = Boolean(next);
+  if (enable) {
+    setDrawing(false);
+    try {
+      publicPreviewFile();
+    } catch (error) {
+      setStatus(`Public preview unavailable: ${error.message}`, true);
+      return;
+    }
+  }
+  publicPreview = enable;
   document.body.dataset.publicPreview = String(publicPreview);
   elements["public-preview"].setAttribute("aria-pressed", String(publicPreview));
   elements["public-preview"].querySelector("span").textContent = publicPreview ? "Exit public preview" : "Public preview";
