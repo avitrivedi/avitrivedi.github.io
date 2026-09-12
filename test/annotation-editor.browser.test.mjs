@@ -377,15 +377,30 @@ describe("local annotation editor in a real browser", { skip: unavailable, timeo
     assert.equal(await evaluate('document.querySelector("#brush-settings").hidden'), true);
   });
 
-  test("single-key shortcuts still work when focus sits inside the preview page", async () => {
+  test("drawing shortcuts preserve controls while Escape always exits from buttons", async () => {
     const pressInPreview = (key) => evaluate(`(() => {
       const doc = document.querySelector("#page-preview").contentDocument;
       doc.dispatchEvent(new doc.defaultView.KeyboardEvent("keydown", { key: ${JSON.stringify(key)}, bubbles: true, cancelable: true }));
     })()`);
-    if (!(await evaluate('document.querySelector("#draw-toggle").getAttribute("aria-pressed") === "true"'))) {
-      await evaluate('document.querySelector("#draw-toggle").click()');
-      await pause(100);
-    }
+    const buttonEscape = await evaluate(`(() => {
+      const toggle = document.querySelector("#draw-toggle");
+      if (toggle.getAttribute("aria-pressed") === "true") toggle.click();
+      toggle.focus();
+      toggle.click();
+      const event = new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true });
+      toggle.dispatchEvent(event);
+      return { drawing: toggle.getAttribute("aria-pressed"), prevented: event.defaultPrevented };
+    })()`);
+    assert.deepEqual(buttonEscape, { drawing: "false", prevented: true });
+    const selectEscape = await evaluate(`(() => {
+      document.querySelector("#draw-toggle").click();
+      const select = document.querySelector("#width");
+      select.focus();
+      const event = new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true });
+      select.dispatchEvent(event);
+      return { drawing: document.querySelector("#draw-toggle").getAttribute("aria-pressed"), prevented: event.defaultPrevented };
+    })()`);
+    assert.deepEqual(selectEscape, { drawing: "true", prevented: false });
     await pressInPreview("h");
     assert.equal(await evaluate('document.querySelector("[data-tool=highlighter]").getAttribute("aria-checked")'), "true");
     await pressInPreview("p");
@@ -500,10 +515,14 @@ describe("local annotation editor in a real browser", { skip: unavailable, timeo
       const win = frame.contentWindow;
       const layer = frame.contentDocument.querySelector(".annotation-author-canvas");
       const rect = layer.getBoundingClientRect();
-      const event = (type, x) => layer.dispatchEvent(new win.PointerEvent(type, { bubbles: true, cancelable: true, pointerId: 91, pointerType: "touch", isPrimary: true, button: 0, clientX: rect.left + rect.width * x, clientY: rect.top + rect.height * 0.5, pressure: 0.5 }));
-      event("pointerdown", 0.2); event("pointermove", 0.5); event("pointerup", 0.5);
+      const event = (type) => layer.dispatchEvent(new win.PointerEvent(type, { bubbles: true, cancelable: true, pointerId: 91, pointerType: "touch", isPrimary: true, button: 0, clientX: rect.left + rect.width * 0.2, clientY: rect.top + rect.height * 0.5, pressure: 0.5 }));
+      event("pointerdown"); event("pointerup");
     })()`);
     assert.equal(await evaluate('document.querySelector("#page-preview").contentDocument.querySelectorAll(".annotation-author-canvas .annotation-stroke").length'), before + 1);
+    assert.equal(await evaluate(`(() => {
+      const stroke = document.querySelector("#page-preview").contentDocument.querySelector(".annotation-author-canvas .annotation-stroke:last-child");
+      return stroke.classList.contains("annotation-stroke--singleton") && getComputedStyle(stroke).strokeLinecap === "round";
+    })()`), true);
     assert.equal(await evaluate('getComputedStyle(document.querySelector("#page-preview").contentDocument.querySelector(".annotation-author-canvas")).touchAction'), "none");
     await evaluate(`(() => {
       const frame = document.querySelector("#page-preview");

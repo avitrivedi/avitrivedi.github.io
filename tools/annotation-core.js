@@ -83,7 +83,7 @@ const opacityRules = [...OPACITY_CLASS.entries()]
   .map(([opacity, className]) => `.${className}{opacity:${opacity}}`)
   .join("");
 
-export const ANNOTATION_CSS = `[data-annotation-active]{position:relative}.annotation-layer{position:absolute;z-index:2;inset:0;display:block;width:100%;height:100%;overflow:visible;pointer-events:none;user-select:none}.annotation-layer--narrow,.annotation-layer--compact{display:none}.annotation-stroke{fill:none;stroke-width:calc(var(--annotation-width)*var(--annotation-pressure,1));stroke-linecap:round;stroke-linejoin:round;vector-effect:non-scaling-stroke}.annotation-tool--pencil{stroke-linecap:round}.annotation-tool--marker{stroke-linecap:square}.annotation-tool--highlighter{stroke-linecap:butt}${colorRules}${widthRules}${opacityRules}.annotation-pressure--0{--annotation-pressure:.72}.annotation-pressure--1{--annotation-pressure:.86}.annotation-pressure--2{--annotation-pressure:1}.annotation-pressure--3{--annotation-pressure:1.13}.annotation-pressure--4{--annotation-pressure:1.26}.annotation-pressure--fixed{--annotation-pressure:1}@media(max-width:37.5rem){.annotation-layer--broad{display:none}.annotation-layer--narrow{display:block}}@media (max-height:48rem) and (min-width:46.01rem){.annotation-layer--broad{display:none}.annotation-layer--compact{display:block}}@media print{.annotation-layer{display:none!important}}@media(prefers-contrast:more){.annotation-layer{display:none}}@media(forced-colors:active){.annotation-layer{display:none!important}}`;
+export const ANNOTATION_CSS = `[data-annotation-active]{position:relative}.annotation-layer{position:absolute;z-index:2;inset:0;display:block;width:100%;height:100%;overflow:visible;pointer-events:none;user-select:none}.annotation-layer--narrow,.annotation-layer--compact{display:none}.annotation-stroke{fill:none;stroke-width:calc(var(--annotation-width)*var(--annotation-pressure,1));stroke-linecap:round;stroke-linejoin:round;vector-effect:non-scaling-stroke}.annotation-tool--pencil{stroke-linecap:round}.annotation-tool--marker{stroke-linecap:square}.annotation-tool--highlighter{stroke-linecap:butt}.annotation-stroke--singleton{stroke-linecap:round}${colorRules}${widthRules}${opacityRules}.annotation-pressure--0{--annotation-pressure:.72}.annotation-pressure--1{--annotation-pressure:.86}.annotation-pressure--2{--annotation-pressure:1}.annotation-pressure--3{--annotation-pressure:1.13}.annotation-pressure--4{--annotation-pressure:1.26}.annotation-pressure--fixed{--annotation-pressure:1}@media(max-width:37.5rem){.annotation-layer--broad{display:none}.annotation-layer--narrow{display:block}}@media (max-height:48rem) and (min-width:46.01rem){.annotation-layer--broad{display:none}.annotation-layer--compact{display:block}}@media print{.annotation-layer{display:none!important}}@media(prefers-contrast:more){.annotation-layer{display:none}}@media(forced-colors:active){.annotation-layer{display:none!important}}`;
 
 const FILE_KEYS = ["schemaVersion", "route", "annotations"];
 const ANNOTATION_KEYS = ["anchor", "contentHash", "layout", "strokes"];
@@ -282,26 +282,37 @@ export function reconcileAnnotationHashes(file, anchors) {
   return { restamped, stale };
 }
 
+function strokeSegments(coordinates) {
+  if (coordinates.length < 2) return [];
+  if (coordinates.length === 2) return [{ type: "line", start: coordinates[0], end: coordinates[1] }];
+  const midpoint = (left, right) => [
+    (left[0] + right[0]) / 2,
+    (left[1] + right[1]) / 2,
+  ];
+  const firstMiddle = midpoint(coordinates[0], coordinates[1]);
+  const segments = [{ type: "line", start: coordinates[0], end: firstMiddle }];
+  let start = firstMiddle;
+  for (let index = 1; index < coordinates.length - 1; index += 1) {
+    const end = index < coordinates.length - 2
+      ? midpoint(coordinates[index], coordinates[index + 1])
+      : coordinates[index + 1];
+    segments.push({ type: "quadratic", start, control: coordinates[index], end });
+    start = end;
+  }
+  return segments;
+}
+
 export function strokePath(points, scale = 1) {
   const coordinates = points.map(([x, y]) => [rounded(x * scale), rounded(y * scale)]);
-  const [first, ...rest] = coordinates;
+  const [first] = coordinates;
   if (!first) return "";
-  if (rest.length === 0) return `M ${first[0]} ${first[1]} l 0.01 0`;
-  if (rest.length === 1) return `M ${first[0]} ${first[1]} L ${rest[0][0]} ${rest[0][1]}`;
-  const midpoint = (left, right) => [rounded((left[0] + right[0]) / 2), rounded((left[1] + right[1]) / 2)];
-  let output = `M ${first[0]} ${first[1]}`;
-  for (let index = 0; index < coordinates.length - 1; index += 1) {
-    const current = coordinates[index];
-    const next = coordinates[index + 1];
-    if (index === 0) {
-      const middle = midpoint(current, next);
-      output += ` L ${middle[0]} ${middle[1]}`;
-    } else if (index < coordinates.length - 2) {
-      const middle = midpoint(current, next);
-      output += ` Q ${current[0]} ${current[1]} ${middle[0]} ${middle[1]}`;
-    } else output += ` Q ${current[0]} ${current[1]} ${next[0]} ${next[1]}`;
-  }
-  return output;
+  if (coordinates.length === 1) return `M ${first[0]} ${first[1]} l 0.01 0`;
+  return strokeSegments(coordinates).reduce((output, segment) => {
+    const end = segment.end.map(rounded);
+    if (segment.type === "line") return `${output} L ${end[0]} ${end[1]}`;
+    const control = segment.control.map(rounded);
+    return `${output} Q ${control[0]} ${control[1]} ${end[0]} ${end[1]}`;
+  }, `M ${first[0]} ${first[1]}`);
 }
 
 export function strokePressureClass(stroke) {
@@ -325,7 +336,8 @@ export function strokeClassNames(stroke) {
     width,
     opacity,
     strokePressureClass(stroke),
-  ].join(" ");
+    stroke.points.length === 1 ? "annotation-stroke--singleton" : "",
+  ].filter(Boolean).join(" ");
 }
 
 function segmentDistanceSquared(point, start, end) {
@@ -337,6 +349,28 @@ function segmentDistanceSquared(point, start, end) {
   return (point[0] - closest[0]) ** 2 + (point[1] - closest[1]) ** 2;
 }
 
+function quadraticDistanceSquared(point, { start, control, end }, radius) {
+  const curvature = Math.hypot(
+    start[0] - 2 * control[0] + end[0],
+    start[1] - 2 * control[1] + end[1],
+  );
+  const tolerance = Math.max(radius / 16, 0.000001);
+  const steps = Math.max(1, Math.min(64, Math.ceil(Math.sqrt(curvature / (8 * tolerance)))));
+  let closest = Number.POSITIVE_INFINITY;
+  let previous = start;
+  for (let index = 1; index <= steps; index += 1) {
+    const progress = index / steps;
+    const inverse = 1 - progress;
+    const current = [
+      inverse ** 2 * start[0] + 2 * inverse * progress * control[0] + progress ** 2 * end[0],
+      inverse ** 2 * start[1] + 2 * inverse * progress * control[1] + progress ** 2 * end[1],
+    ];
+    closest = Math.min(closest, segmentDistanceSquared(point, previous, current));
+    previous = current;
+  }
+  return closest;
+}
+
 export function closestStrokeIndex(strokes, point, radius, scale = [1, 1]) {
   const project = ([x, y]) => [x * scale[0], y * scale[1]];
   const radiusSquared = radius ** 2;
@@ -344,8 +378,11 @@ export function closestStrokeIndex(strokes, point, radius, scale = [1, 1]) {
   for (let strokeIndex = strokes.length - 1; strokeIndex >= 0; strokeIndex -= 1) {
     const points = strokes[strokeIndex].points.map(project);
     if (points.length === 1 && segmentDistanceSquared(target, points[0], points[0]) <= radiusSquared) return strokeIndex;
-    for (let index = 1; index < points.length; index += 1) {
-      if (segmentDistanceSquared(target, points[index - 1], points[index]) <= radiusSquared) return strokeIndex;
+    for (const segment of strokeSegments(points)) {
+      const distance = segment.type === "line"
+        ? segmentDistanceSquared(target, segment.start, segment.end)
+        : quadraticDistanceSquared(target, segment, radius);
+      if (distance <= radiusSquared) return strokeIndex;
     }
   }
   return -1;

@@ -572,10 +572,16 @@ async function frameLoaded() {
 function handleShortcut(event) {
   if (!drawing || event.altKey || event.ctrlKey || event.metaKey) return;
   const { target } = event;
-  if (typeof target?.matches === "function" && target.matches("input, select, textarea, button, summary")) return;
   const key = event.key.toLowerCase();
+  const editable = Boolean(target?.isContentEditable)
+    || (typeof target?.matches === "function" && target.matches("input, select, textarea"));
+  if (key === "escape" && !editable) {
+    setDrawing(false);
+    event.preventDefault();
+    return;
+  }
+  if (editable || (typeof target?.matches === "function" && target.matches("button, summary"))) return;
   const action = {
-    escape: () => setDrawing(false),
     p: () => setTool("pencil"),
     i: () => setTool("pen"),
     m: () => setTool("marker"),

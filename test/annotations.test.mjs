@@ -137,6 +137,8 @@ test("legacy v1 files migrate deterministically without changing their visual de
   assert.deepEqual(migrated.annotations[1].strokes[0], {
     tool: "highlighter", style: "yellow", width: 12, opacity: 0.22, points: [[0.2, 0.3, 0.7]],
   });
+  const rendered = renderRouteAnnotations(readFileSync(resolve(siteRoot, "index.html"), "utf8"), migrated, ANNOTATION_ROUTES[0]);
+  assert.match(rendered, /annotation-tool--highlighter[^"]*annotation-stroke--singleton/);
   const once = serializeAnnotationFile(legacy, manifest);
   assert.equal(once, serializeAnnotationFile(JSON.parse(once), manifest));
   assert.equal(JSON.parse(once).schemaVersion, 2);
@@ -302,6 +304,9 @@ test("the renderer uses deterministic finite paths and eraser hit testing prefer
   ];
   assert.equal(closestStrokeIndex(strokes, [0.5, 0.5], 0.01), 1);
   assert.equal(closestStrokeIndex(strokes, [0.5, 0.8], 0.01), -1);
+  const curved = [{ points: [[0, 0, 0.5], [1, 1, 0.5], [0, 1, 0.5]] }];
+  assert.equal(strokePath(curved[0].points, 1000), "M 0 0 L 500 500 Q 1000 1000 0 1000");
+  assert.equal(closestStrokeIndex(curved, [0.625, 0.875], 18, [1000, 1000]), 0);
 });
 
 test("eraser hit testing measures a pixel radius on both axes of a non-square section", () => {
