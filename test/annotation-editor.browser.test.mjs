@@ -6,7 +6,12 @@ import { homedir, tmpdir } from "node:os";
 import { extname, join, resolve } from "node:path";
 import { after, before, describe, test } from "node:test";
 import { createAuthorServer, listen } from "../tools/author-server.mjs";
-import { createAnnotationManifest, generateAnnotatedPages } from "../scripts/annotation-build.mjs";
+import {
+  ANNOTATION_ROUTES,
+  createAnnotationManifest,
+  generateAnnotatedPages,
+  renderRouteAnnotations,
+} from "../scripts/annotation-build.mjs";
 import { TOOL_PRESETS, serializeAnnotationFile } from "../tools/annotation-core.js";
 
 function findChromium() {
@@ -280,6 +285,51 @@ describe("local annotation editor in a real browser", { skip: unavailable, timeo
     await setFile(new URL("./fixtures/annotations/dandho.json", import.meta.url).pathname);
     await waitFor('document.querySelector("#status").textContent.includes("dandho.json imported")', "Dandho fixture did not import");
     assert.equal(await evaluate('document.querySelector("#page-preview").contentDocument.querySelectorAll(".annotation-tool--pen.annotation-color--graphite").length'), 1);
+  });
+
+  test("public preview matches canonical exported production geometry", async () => {
+    const currentManifest = await createAnnotationManifest();
+    const inputPath = join(downloadPath, "precision-input.json");
+    writeFileSync(inputPath, JSON.stringify({
+      schemaVersion: 2,
+      route: "/",
+      annotations: [{
+        anchor: "home-introduction",
+        contentHash: currentManifest["/"].anchors["home-introduction"].contentHash,
+        layout: "broad",
+        strokes: [{
+          tool: "pen",
+          style: "graphite",
+          width: 2.25,
+          opacity: 1,
+          points: [[0.123456, 0.2, 0.37496], [0.8, 0.4, 0.37496]],
+        }],
+      }],
+    }));
+    await evaluate(`(() => {
+      const route = document.querySelector("#route");
+      route.value = "/";
+      route.dispatchEvent(new Event("change", { bubbles: true }));
+    })()`);
+    await waitFor('document.querySelector("#page-preview").contentDocument?.querySelector("[data-annotation-id=home-introduction]")', "home preview did not load");
+    await setFile(inputPath);
+    await waitFor('document.querySelector("#status").textContent.includes("precision-input.json imported")', "precision fixture did not import");
+    await evaluate('document.querySelector("#public-preview").click()');
+    const previewPath = await evaluate('document.querySelector("#page-preview").contentDocument.querySelector(".annotation-layer--broad path").outerHTML');
+    assert.match(previewPath, /annotation-pressure--2/);
+
+    const exportPath = join(downloadPath, "home.json");
+    rmSync(exportPath, { force: true });
+    await evaluate('document.querySelector("#export").click()');
+    for (let attempt = 0; attempt < 100 && !existsSync(exportPath); attempt += 1) await pause(50);
+    assert.ok(existsSync(exportPath), "canonical export was not downloaded");
+    const exported = JSON.parse(readFileSync(exportPath, "utf8"));
+    const production = renderRouteAnnotations(
+      readFileSync(resolve("site/index.html"), "utf8"),
+      exported,
+      ANNOTATION_ROUTES[0],
+    );
+    assert.ok(production.includes(previewPath));
   });
 
   test("draw, pointer cancellation, erase, undo, and confirmed clear preserve editor state", async () => {

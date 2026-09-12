@@ -4,6 +4,7 @@ import {
   LEGACY_ANNOTATION_SCHEMA_VERSION,
   STYLE_COLORS,
   TOOL_PRESETS,
+  canonicalizeAnnotationFile,
   closestStrokeIndex,
   createEmptyAnnotationFile,
   reconcileAnnotationHashes,
@@ -262,7 +263,10 @@ function renderPreview() {
   if (!doc?.documentElement || !manifest) return;
   cleanPreview(doc);
   addPreviewStyle(doc, !publicPreview);
-  for (const annotation of currentFile.annotations) {
+  const annotations = publicPreview
+    ? canonicalizeAnnotationFile(currentFile).annotations
+    : currentFile.annotations;
+  for (const annotation of annotations) {
     if (annotation.strokes.length === 0) continue;
     const host = doc.querySelector(`[data-annotation-id="${annotation.anchor}"]`);
     if (!host) continue;
