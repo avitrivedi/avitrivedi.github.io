@@ -1,10 +1,14 @@
 import {
   ANNOTATION_CSS,
   ANNOTATION_LIMITS,
+  LEGACY_ANNOTATION_SCHEMA_VERSION,
+  STYLE_COLORS,
+  TOOL_PRESETS,
   closestStrokeIndex,
   createEmptyAnnotationFile,
   reconcileAnnotationHashes,
   serializeAnnotationFile,
+  strokeClassNames,
   strokePath,
   validateAnnotationFile,
   validateManifest,
@@ -27,18 +31,33 @@ const VIEWPORTS = {
     { width: 1483, height: 768, label: "1483 × 768" },
   ],
 };
+const COLOR_LABELS = {
+  graphite: "Graphite",
+  blue: "Ocean blue",
+  coral: "Coral",
+  moss: "Moss",
+  plum: "Plum",
+  yellow: "Sun yellow",
+  mint: "Mint",
+  sky: "Sky blue",
+  pink: "Petal pink",
+};
+const THEME_ORDER = ["system", "light", "dark"];
 
 const elements = Object.fromEntries([
-  "status", "route", "anchor", "layout", "viewport", "draw-toggle", "public-preview", "style",
-  "undo", "clear", "empty", "export", "import-file", "page-preview", "preview-size",
+  "status", "route", "anchor", "layout", "viewport", "draw-toggle", "public-preview",
+  "width", "opacity", "color-palette", "brush-settings", "brush-preview", "undo", "redo",
+  "clear", "empty", "export", "import-file", "page-preview", "preview-size", "theme-toggle",
 ].map((id) => [id, document.getElementById(id)]));
 const toolButtons = [...document.querySelectorAll(".tool")];
+const drawingControls = [...document.querySelectorAll(".tool, #width, #opacity, #undo, #redo, #clear")];
+const toolSettings = Object.fromEntries(Object.entries(TOOL_PRESETS).map(([tool, preset]) => [tool, { ...preset.defaults }]));
 
 let manifest;
 let currentFile;
 let drawing = false;
 let publicPreview = false;
-let selectedTool = "pen";
+let selectedTool = "pencil";
 let activePointer = null;
 const routeFiles = new Map();
 const histories = new Map();
@@ -46,22 +65,24 @@ const histories = new Map();
 function setStatus(message, error = false) {
   elements.status.textContent = message;
   elements.status.dataset.error = error ? "true" : "false";
+  elements.status.title = message;
 }
 
-function clone(value) {
-  return structuredClone(value);
-}
+function clone(value) { return structuredClone(value); }
+function history() { return histories.get(currentFile.route); }
 
-function history() {
-  if (!histories.has(currentFile.route)) histories.set(currentFile.route, []);
-  return histories.get(currentFile.route);
+function updateHistoryControls() {
+  const entries = history();
+  elements.undo.disabled = publicPreview || entries.past.length === 0;
+  elements.redo.disabled = publicPreview || entries.future.length === 0;
 }
 
 function remember(snapshot = clone(currentFile)) {
   const entries = history();
-  entries.push(snapshot);
-  if (entries.length > 50) entries.shift();
-  elements.undo.disabled = false;
+  entries.past.push(snapshot);
+  if (entries.past.length > 50) entries.past.shift();
+  entries.future.length = 0;
+  updateHistoryControls();
 }
 
 function replaceCurrent(next) {
@@ -69,13 +90,8 @@ function replaceCurrent(next) {
   routeFiles.set(next.route, next);
 }
 
-function routeDefinition() {
-  return manifest[elements.route.value];
-}
-
-function selectedAnchorDefinition() {
-  return routeDefinition().anchors[elements.anchor.value];
-}
+function routeDefinition() { return manifest[elements.route.value]; }
+function selectedAnchorDefinition() { return routeDefinition().anchors[elements.anchor.value]; }
 
 function emptyAnnotation() {
   return {
@@ -87,9 +103,7 @@ function emptyAnnotation() {
 }
 
 function selectedAnnotation(create = false) {
-  let annotation = currentFile.annotations.find((entry) => (
-    entry.anchor === elements.anchor.value && entry.layout === elements.layout.value
-  ));
+  let annotation = currentFile.annotations.find((entry) => entry.anchor === elements.anchor.value && entry.layout === elements.layout.value);
   if (!annotation && create) {
     annotation = emptyAnnotation();
     currentFile.annotations.push(annotation);
@@ -114,26 +128,75 @@ function fileStrokeCount() {
   return currentFile.annotations.reduce((total, annotation) => total + annotation.strokes.length, 0);
 }
 
+function addOptions(select, values, formatter) {
+  select.replaceChildren();
+  for (const value of values) select.add(new Option(formatter(value), String(value)));
+}
+
+function updateBrushPreview() {
+  const preset = TOOL_PRESETS[selectedTool];
+  const settings = toolSettings[selectedTool];
+  const unavailable = selectedTool === "eraser";
+  elements["brush-settings"].hidden = unavailable;
+  if (unavailable) return;
+  elements["brush-preview"].style.stroke = STYLE_COLORS[settings.style];
+  elements["brush-preview"].style.strokeWidth = String(settings.width);
+  elements["brush-preview"].style.opacity = String(settings.opacity);
+  elements["brush-preview"].style.strokeLinecap = selectedTool === "marker" ? "square" : selectedTool === "highlighter" ? "butt" : "round";
+  elements["brush-preview"].dataset.pressureAware = String(preset.pressure);
+}
+
+function configurePalette() {
+  const settings = toolSettings[selectedTool];
+  const palette = elements["color-palette"];
+  palette.replaceChildren();
+  for (const style of TOOL_PRESETS[selectedTool].styles) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "color-swatch";
+    button.dataset.style = style;
+    button.setAttribute("role", "radio");
+    button.setAttribute("aria-checked", String(style === settings.style));
+    button.setAttribute("aria-label", COLOR_LABELS[style]);
+    button.title = COLOR_LABELS[style];
+    button.style.setProperty("--swatch", STYLE_COLORS[style]);
+    button.addEventListener("click", () => {
+      settings.style = style;
+      for (const swatch of palette.children) swatch.setAttribute("aria-checked", String(swatch === button));
+      updateBrushPreview();
+      setStatus(`${COLOR_LABELS[style]} selected for ${TOOL_PRESETS[selectedTool].label.toLowerCase()}.`);
+    });
+    palette.append(button);
+  }
+}
+
+function configureBrushControls() {
+  if (selectedTool === "eraser") {
+    elements["brush-settings"].hidden = true;
+    return;
+  }
+  const preset = TOOL_PRESETS[selectedTool];
+  const settings = toolSettings[selectedTool];
+  addOptions(elements.width, preset.widths, (value) => `${value} px`);
+  addOptions(elements.opacity, preset.opacities, (value) => `${Math.round(value * 100)}%`);
+  elements.width.value = String(settings.width);
+  elements.opacity.value = String(settings.opacity);
+  configurePalette();
+  updateBrushPreview();
+}
+
 function setTool(tool) {
+  if (tool !== "eraser" && !Object.hasOwn(TOOL_PRESETS, tool)) return;
   selectedTool = tool;
   for (const button of toolButtons) button.setAttribute("aria-checked", String(button.dataset.tool === tool));
-  elements.style.replaceChildren();
-  const options = tool === "pen"
-    ? [["graphite", "Graphite"], ["blue", "Blue"]]
-    : tool === "highlighter"
-      ? [["yellow", "Yellow"]]
-      : [["unused", "Not used by eraser"]];
-  for (const [value, label] of options) elements.style.add(new Option(label, value));
-  elements.style.disabled = tool === "eraser";
-  elements.style.previousElementSibling.textContent = tool === "pen" ? "Pen style" : tool === "highlighter" ? "Highlighter style" : "Eraser";
-  setStatus(`${tool[0].toUpperCase()}${tool.slice(1)} selected${drawing ? ". Drawing is active." : ". Read/scroll mode remains active."}`);
+  configureBrushControls();
+  const name = tool === "eraser" ? "Whole-stroke eraser" : TOOL_PRESETS[tool].label;
+  setStatus(`${name} selected. ${drawing ? "Drawing is active." : "Read and scroll mode remains active."}`);
 }
 
 function configureAnchors() {
   elements.anchor.replaceChildren();
-  for (const [id, details] of Object.entries(routeDefinition().anchors)) {
-    elements.anchor.add(new Option(details.name, id));
-  }
+  for (const [id, details] of Object.entries(routeDefinition().anchors)) elements.anchor.add(new Option(details.name, id));
 }
 
 function configureViewports(preferredWidth) {
@@ -153,24 +216,19 @@ function resizePreview() {
   elements["preview-size"].textContent = `${choice.label} · ${elements.layout.value}`;
 }
 
-function previewRoute() {
-  return `/preview${currentFile.route}`;
-}
+function previewRoute() { return `/preview${currentFile.route}`; }
 
 function loadRoute() {
   const next = previewRoute();
-  if (new URL(elements["page-preview"].src || "about:blank", location.href).pathname !== next) {
-    elements["page-preview"].src = next;
-  } else {
-    renderPreview();
-  }
+  if (new URL(elements["page-preview"].src || "about:blank", location.href).pathname !== next) elements["page-preview"].src = next;
+  else renderPreview();
 }
 
 function addPreviewStyle(doc, includeAuthorStyles) {
   const style = doc.createElement("style");
   style.dataset.annotationAuthorStyle = "true";
   style.textContent = includeAuthorStyles
-    ? `${ANNOTATION_CSS}\n.annotation-author-selected{outline:2px dashed #6d6d6d;outline-offset:6px}.annotation-author-canvas{pointer-events:auto!important;touch-action:none}`
+    ? `${ANNOTATION_CSS}\n.annotation-author-selected{outline:2px dashed #587367;outline-offset:6px}.annotation-author-canvas{pointer-events:auto!important;touch-action:none;cursor:crosshair}`
     : ANNOTATION_CSS;
   doc.head.append(style);
 }
@@ -184,7 +242,7 @@ function createLayer(doc, annotation) {
   svg.setAttribute("focusable", "false");
   for (const stroke of annotation.strokes) {
     const path = doc.createElementNS(SVG_NS, "path");
-    path.setAttribute("class", `annotation-stroke annotation-stroke--${stroke.tool}-${stroke.style}`);
+    path.setAttribute("class", strokeClassNames(stroke));
     path.setAttribute("d", strokePath(stroke.points, 1000));
     svg.append(path);
   }
@@ -204,7 +262,6 @@ function renderPreview() {
   if (!doc?.documentElement || !manifest) return;
   cleanPreview(doc);
   addPreviewStyle(doc, !publicPreview);
-
   for (const annotation of currentFile.annotations) {
     if (annotation.strokes.length === 0) continue;
     const host = doc.querySelector(`[data-annotation-id="${annotation.anchor}"]`);
@@ -212,7 +269,6 @@ function renderPreview() {
     host.setAttribute("data-annotation-active", "");
     host.append(createLayer(doc, annotation));
   }
-
   if (publicPreview) return;
   const host = doc.querySelector(`[data-annotation-id="${elements.anchor.value}"]`);
   if (!host) {
@@ -244,15 +300,24 @@ function pointFromEvent(layer, event) {
 function cancelPointer(layer) {
   if (!activePointer) return;
   const before = activePointer.before;
-  try {
-    if (layer?.hasPointerCapture(activePointer.id)) layer.releasePointerCapture(activePointer.id);
-  } catch {
-    // Capture may already be gone after a platform cancellation.
-  }
+  try { if (layer?.hasPointerCapture(activePointer.id)) layer.releasePointerCapture(activePointer.id); } catch { /* Capture may already be gone. */ }
   activePointer = null;
   replaceCurrent(before);
   renderPreview();
   setStatus("Interrupted stroke discarded. Drawing remains active.");
+}
+
+function appendPointerPoints(layer, event) {
+  const samples = typeof event.getCoalescedEvents === "function" ? event.getCoalescedEvents() : [event];
+  for (const sample of samples.length ? samples : [event]) {
+    const point = pointFromEvent(layer, sample);
+    const last = activePointer.stroke.points.at(-1);
+    if (Math.hypot(point[0] - last[0], point[1] - last[1]) < 0.0008) continue;
+    if (activePointer.stroke.points.length >= ANNOTATION_LIMITS.maxPointsPerStroke) break;
+    activePointer.stroke.points.push(point);
+  }
+  activePointer.path.setAttribute("d", strokePath(activePointer.stroke.points, 1000));
+  activePointer.path.setAttribute("class", strokeClassNames(activePointer.stroke));
 }
 
 function installPointerHandlers(layer) {
@@ -261,12 +326,9 @@ function installPointerHandlers(layer) {
     const point = pointFromEvent(layer, event);
     if (selectedTool === "eraser") {
       const target = selectedAnnotation(false);
-      if (!target) {
-        event.preventDefault();
-        return;
-      }
+      if (!target) { event.preventDefault(); return; }
       const rect = layer.getBoundingClientRect();
-      const index = closestStrokeIndex(target.strokes, point, 16, [rect.width, rect.height]);
+      const index = closestStrokeIndex(target.strokes, point, 18, [rect.width, rect.height]);
       if (index < 0) {
         setStatus("No stroke is close enough to erase.");
         event.preventDefault();
@@ -276,7 +338,7 @@ function installPointerHandlers(layer) {
       target.strokes.splice(index, 1);
       remember(before);
       renderPreview();
-      setStatus("Stroke erased. Drawing remains active.");
+      setStatus("Whole stroke erased. Undo is available.");
       event.preventDefault();
       return;
     }
@@ -290,30 +352,27 @@ function installPointerHandlers(layer) {
       return;
     }
     if (target.strokes.length === 0) target.contentHash = selectedAnchorDefinition().contentHash;
-    const stroke = { tool: selectedTool, style: elements.style.value, points: [point] };
+    const settings = toolSettings[selectedTool];
+    const stroke = { tool: selectedTool, style: settings.style, width: settings.width, opacity: settings.opacity, points: [point] };
     target.strokes.push(stroke);
     const path = layer.ownerDocument.createElementNS(SVG_NS, "path");
-    path.setAttribute("class", `annotation-stroke annotation-stroke--${stroke.tool}-${stroke.style}`);
+    path.setAttribute("class", strokeClassNames(stroke));
     path.setAttribute("d", strokePath(stroke.points, 1000));
     layer.append(path);
     activePointer = { id: event.pointerId, before, stroke, path, target };
-    try { layer.setPointerCapture(event.pointerId); } catch { /* Pointer capture is best effort. */ }
+    try { layer.setPointerCapture(event.pointerId); } catch { /* Capture is best effort. */ }
     event.preventDefault();
   });
 
   layer.addEventListener("pointermove", (event) => {
     if (!activePointer || event.pointerId !== activePointer.id) return;
-    const point = pointFromEvent(layer, event);
-    const last = activePointer.stroke.points.at(-1);
-    if (Math.hypot(point[0] - last[0], point[1] - last[1]) < 0.0008) return;
-    if (activePointer.stroke.points.length >= ANNOTATION_LIMITS.maxPointsPerStroke) return;
-    activePointer.stroke.points.push(point);
-    activePointer.path.setAttribute("d", strokePath(activePointer.stroke.points, 1000));
+    appendPointerPoints(layer, event);
     event.preventDefault();
   });
 
   layer.addEventListener("pointerup", (event) => {
     if (!activePointer || event.pointerId !== activePointer.id) return;
+    appendPointerPoints(layer, event);
     const { before, target } = activePointer;
     activePointer = null;
     try { if (layer.hasPointerCapture(event.pointerId)) layer.releasePointerCapture(event.pointerId); } catch { /* Already released. */ }
@@ -341,12 +400,15 @@ function discardActiveStroke() {
 function setDrawing(next) {
   drawing = Boolean(next) && !publicPreview;
   if (!drawing) discardActiveStroke();
+  document.body.dataset.drawing = String(drawing);
   elements["draw-toggle"].setAttribute("aria-pressed", String(drawing));
-  elements["draw-toggle"].textContent = drawing ? "Disable drawing" : "Enable drawing";
+  elements["draw-toggle"].querySelector("span").textContent = drawing ? "Stop drawing" : "Start drawing";
+  elements["draw-toggle"].title = drawing ? "Return to read and scroll mode (Escape)" : "Enter drawing mode";
   renderPreview();
+  const toolName = selectedTool === "eraser" ? "Whole-stroke eraser" : TOOL_PRESETS[selectedTool].label;
   setStatus(drawing
-    ? `${selectedTool[0].toUpperCase()}${selectedTool.slice(1)} active. Escape returns to read/scroll mode.`
-    : "Read/scroll mode. Page links, selection, context menus, and scrolling are available.");
+    ? `${toolName} active. Escape returns to read and scroll mode.`
+    : "Read and scroll mode. Links, selection, context menus, focus, and touch gestures are available.");
 }
 
 function setPublicPreview(next) {
@@ -354,12 +416,17 @@ function setPublicPreview(next) {
   if (publicPreview) setDrawing(false);
   document.body.dataset.publicPreview = String(publicPreview);
   elements["public-preview"].setAttribute("aria-pressed", String(publicPreview));
-  elements["public-preview"].textContent = publicPreview ? "Exit public preview" : "Public preview";
+  elements["public-preview"].querySelector("span").textContent = publicPreview ? "Exit public preview" : "Public preview";
   elements["draw-toggle"].disabled = publicPreview;
+  for (const control of drawingControls) control.disabled = publicPreview || ((control === elements.undo || control === elements.redo) && control.disabled);
+  if (!publicPreview) {
+    for (const control of drawingControls) if (control !== elements.undo && control !== elements.redo) control.disabled = false;
+  }
+  updateHistoryControls();
   renderPreview();
   setStatus(publicPreview
-    ? "Exact inert public rendering preview: author outlines and input handling are off."
-    : "Author preview restored in read/scroll mode.");
+    ? "Exact public preview. The layer is inert, decorative, nonfocusable, and uses production rendering."
+    : "Author preview restored in read and scroll mode.");
 }
 
 function resetModes() {
@@ -367,11 +434,14 @@ function resetModes() {
   publicPreview = false;
   drawing = false;
   document.body.dataset.publicPreview = "false";
+  document.body.dataset.drawing = "false";
   elements["public-preview"].setAttribute("aria-pressed", "false");
-  elements["public-preview"].textContent = "Public preview";
+  elements["public-preview"].querySelector("span").textContent = "Public preview";
   elements["draw-toggle"].disabled = false;
   elements["draw-toggle"].setAttribute("aria-pressed", "false");
-  elements["draw-toggle"].textContent = "Enable drawing";
+  elements["draw-toggle"].querySelector("span").textContent = "Start drawing";
+  for (const control of drawingControls) if (control !== elements.undo && control !== elements.redo) control.disabled = false;
+  updateHistoryControls();
 }
 
 async function importFile(file) {
@@ -382,50 +452,62 @@ async function importFile(file) {
     const text = await file.text();
     let value;
     try { value = JSON.parse(text); } catch { throw new Error("Import is not valid JSON."); }
+    const sourceVersion = value?.schemaVersion;
     const validated = validateAnnotationFile(value, manifest, { byteLength: new TextEncoder().encode(text).byteLength });
-    if (validated.route !== elements.route.value) {
-      throw new Error(`Import is for ${validated.route}; choose that page before importing.`);
-    }
+    if (validated.route !== elements.route.value) throw new Error(`Import is for ${validated.route}; choose that page before importing.`);
     remember(clone(currentFile));
     replaceCurrent(validated);
     renderPreview();
-    setStatus(`${file.name} imported and validated. Nothing has been uploaded or saved.`);
+    const migration = sourceVersion === LEGACY_ANNOTATION_SCHEMA_VERSION ? " Legacy v1 strokes were deterministically migrated in memory." : "";
+    setStatus(`${file.name} imported and validated.${migration} Nothing was uploaded or saved.`);
   } catch (error) {
     setStatus(`Import failed: ${error.message}`, true);
-  } finally {
-    elements["import-file"].value = "";
-  }
+  } finally { elements["import-file"].value = ""; }
 }
 
 function undo() {
   discardActiveStroke();
-  const previous = history().pop();
+  const entries = history();
+  const previous = entries.past.pop();
   if (!previous) return;
+  entries.future.push(clone(currentFile));
   replaceCurrent(previous);
-  elements.undo.disabled = history().length === 0;
+  updateHistoryControls();
   renderPreview();
-  setStatus("Last drawing change undone.");
+  setStatus("Last drawing change undone. Redo is available.");
+}
+
+function redo() {
+  discardActiveStroke();
+  const entries = history();
+  const next = entries.future.pop();
+  if (!next) return;
+  entries.past.push(clone(currentFile));
+  replaceCurrent(next);
+  updateHistoryControls();
+  renderPreview();
+  setStatus("Drawing change restored.");
 }
 
 function clearTarget() {
   discardActiveStroke();
   const target = selectedAnnotation(false);
   if (!target?.strokes.length) {
-    setStatus("The selected section and layout are already empty.");
+    setStatus("The selected section and scope are already empty.");
     return;
   }
-  if (!window.confirm(`Clear ${target.strokes.length} stroke${target.strokes.length === 1 ? "" : "s"} from this section and layout?`)) return;
+  if (!window.confirm(`Clear ${target.strokes.length} stroke${target.strokes.length === 1 ? "" : "s"} from this section and scope? You can undo this.`)) return;
   const before = clone(currentFile);
   target.strokes = [];
   remember(before);
   renderPreview();
-  setStatus("Selected section and layout cleared. Undo is available.");
+  setStatus("Selected section and scope cleared. Undo is available.");
 }
 
 function beginEmpty() {
   discardActiveStroke();
   if (currentFile.annotations.some((annotation) => annotation.strokes.length)
-      && !window.confirm("Discard every in-memory annotation for this route and begin empty?")) return;
+      && !window.confirm("Discard every in-memory annotation for this route and begin empty? You can undo this.")) return;
   remember(clone(currentFile));
   replaceCurrent(createEmptyAnnotationFile(currentFile.route));
   renderPreview();
@@ -445,9 +527,7 @@ function exportFile() {
     link.remove();
     setTimeout(() => URL.revokeObjectURL(url), 0);
     setStatus(`${routeDefinition().data} exported deterministically. Review it before replacing annotations/${routeDefinition().data}.`);
-  } catch (error) {
-    setStatus(`Export failed: ${error.message}`, true);
-  }
+  } catch (error) { setStatus(`Export failed: ${error.message}`, true); }
 }
 
 async function fetchManifest() {
@@ -462,9 +542,7 @@ async function refreshManifest() {
   for (const [route, definition] of Object.entries(next)) {
     const file = routeFiles.get(route);
     if (!file) continue;
-    for (const target of reconcileAnnotationHashes(file, definition.anchors).stale) {
-      stale.push(`${route} ${target}`);
-    }
+    for (const target of reconcileAnnotationHashes(file, definition.anchors).stale) stale.push(`${route} ${target}`);
   }
   manifest = next;
   return stale;
@@ -478,37 +556,45 @@ async function frameLoaded() {
       elements.route.value = path;
       currentFile = routeFiles.get(path);
       configureAnchors();
-      elements.undo.disabled = history().length === 0;
+      updateHistoryControls();
     }
     await elements["page-preview"].contentDocument.fonts?.ready;
     let notice = "";
     try {
       const stale = await refreshManifest();
-      if (stale.length > 0) {
-        notice = ` Page content changed under ${stale.join(", ")}: redraw or clear ${stale.length === 1 ? "that mark" : "those marks"} before export.`;
-      }
-    } catch (error) {
-      notice = ` Page revisions could not be refreshed: ${error.message}`;
-    }
+      if (stale.length > 0) notice = ` Page content changed under ${stale.join(", ")}: redraw or clear ${stale.length === 1 ? "that mark" : "those marks"} before export.`;
+    } catch (error) { notice = ` Page revisions could not be refreshed: ${error.message}`; }
     renderPreview();
-    setStatus(`Local page ready in read/scroll mode. Choose a section, then enable drawing.${notice}`, notice !== "");
-  } catch (error) {
-    setStatus(`Preview failed: ${error.message}`, true);
-  }
+    setStatus(`Local page ready in read and scroll mode. Choose a section, then start drawing.${notice}`, notice !== "");
+  } catch (error) { setStatus(`Preview failed: ${error.message}`, true); }
 }
 
 function handleShortcut(event) {
   if (!drawing || event.altKey || event.ctrlKey || event.metaKey) return;
   const { target } = event;
-  if (typeof target?.matches === "function" && target.matches("input, select, textarea, button")) return;
+  if (typeof target?.matches === "function" && target.matches("input, select, textarea, button, summary")) return;
   const key = event.key.toLowerCase();
-  if (key === "escape") setDrawing(false);
-  else if (key === "p") setTool("pen");
-  else if (key === "h") setTool("highlighter");
-  else if (key === "e") setTool("eraser");
-  else if (key === "u") undo();
-  else return;
+  const action = {
+    escape: () => setDrawing(false),
+    p: () => setTool("pencil"),
+    i: () => setTool("pen"),
+    m: () => setTool("marker"),
+    h: () => setTool("highlighter"),
+    e: () => setTool("eraser"),
+    u: undo,
+    r: redo,
+  }[key];
+  if (!action) return;
+  action();
   event.preventDefault();
+}
+
+function cycleTheme() {
+  const current = document.body.dataset.theme;
+  const next = THEME_ORDER[(THEME_ORDER.indexOf(current) + 1) % THEME_ORDER.length];
+  document.body.dataset.theme = next;
+  elements["theme-toggle"].setAttribute("aria-label", `Theme: ${next === "system" ? "follow system" : next}`);
+  setStatus(`Editor theme set to ${next === "system" ? "follow your system" : next}. The public page preview is unchanged.`);
 }
 
 function wireEvents() {
@@ -516,25 +602,25 @@ function wireEvents() {
     resetModes();
     currentFile = routeFiles.get(elements.route.value);
     configureAnchors();
-    elements.undo.disabled = history().length === 0;
+    updateHistoryControls();
     loadRoute();
   });
   elements.anchor.addEventListener("change", () => { setDrawing(false); setPublicPreview(false); });
-  elements.layout.addEventListener("change", () => {
-    setDrawing(false);
-    setPublicPreview(false);
-    configureViewports();
-  });
+  elements.layout.addEventListener("change", () => { setDrawing(false); setPublicPreview(false); configureViewports(); });
   elements.viewport.addEventListener("change", () => { resizePreview(); requestAnimationFrame(renderPreview); });
   elements["draw-toggle"].addEventListener("click", () => setDrawing(!drawing));
   elements["public-preview"].addEventListener("click", () => setPublicPreview(!publicPreview));
   for (const button of toolButtons) button.addEventListener("click", () => setTool(button.dataset.tool));
+  elements.width.addEventListener("change", () => { toolSettings[selectedTool].width = Number(elements.width.value); updateBrushPreview(); });
+  elements.opacity.addEventListener("change", () => { toolSettings[selectedTool].opacity = Number(elements.opacity.value); updateBrushPreview(); });
   elements.undo.addEventListener("click", undo);
+  elements.redo.addEventListener("click", redo);
   elements.clear.addEventListener("click", clearTarget);
   elements.empty.addEventListener("click", beginEmpty);
   elements.export.addEventListener("click", exportFile);
   elements["import-file"].addEventListener("change", () => importFile(elements["import-file"].files[0]));
   elements["page-preview"].addEventListener("load", frameLoaded);
+  elements["theme-toggle"].addEventListener("click", cycleTheme);
   document.addEventListener("keydown", handleShortcut);
 }
 
@@ -543,18 +629,17 @@ async function start() {
     manifest = await fetchManifest();
     for (const route of Object.keys(manifest)) {
       routeFiles.set(route, createEmptyAnnotationFile(route));
-      histories.set(route, []);
+      histories.set(route, { past: [], future: [] });
       elements.route.add(new Option(manifest[route].name, route));
     }
     currentFile = routeFiles.get(elements.route.value);
     configureAnchors();
     configureViewports(1366);
-    setTool("pen");
+    setTool("pencil");
+    updateHistoryControls();
     wireEvents();
     loadRoute();
-  } catch (error) {
-    setStatus(`Authoring tool could not start: ${error.message}`, true);
-  }
+  } catch (error) { setStatus(`Authoring tool could not start: ${error.message}`, true); }
 }
 
 start();

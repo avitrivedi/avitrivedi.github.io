@@ -7,6 +7,7 @@ import {
   ANNOTATION_LIMITS,
   AnnotationValidationError,
   LAYOUTS,
+  TOOL_PRESETS,
   canonicalizeAnnotationFile,
   closestStrokeIndex,
   reconcileAnnotationHashes,
@@ -28,6 +29,20 @@ const manifest = await createAnnotationManifest(siteRoot);
 const hash = manifest["/"].anchors["home-introduction"].contentHash;
 
 function validFile(overrides = {}) {
+  return {
+    schemaVersion: 2,
+    route: "/",
+    annotations: [{
+      anchor: "home-introduction",
+      contentHash: hash,
+      layout: "broad",
+      strokes: [{ tool: "pen", style: "graphite", width: 2.25, opacity: 1, points: [[0.1, 0.2, 0.5], [0.3, 0.4, 0.6]] }],
+    }],
+    ...overrides,
+  };
+}
+
+function legacyFile(overrides = {}) {
   return {
     schemaVersion: 1,
     route: "/",
@@ -75,12 +90,20 @@ test("the manifest covers four routes with durable unique source anchors", () =>
   );
 });
 
-test("strict validation accepts the fixture and deterministic serialization is stable", () => {
+test("strict validation accepts every preset and deterministic serialization is stable", () => {
   const file = validFile();
   assert.deepEqual(validateAnnotationFile(file, manifest), file);
+  const presetStrokes = Object.entries(TOOL_PRESETS).map(([tool, preset], index) => ({
+    tool,
+    style: preset.styles[index % preset.styles.length],
+    width: preset.widths[index % preset.widths.length],
+    opacity: preset.opacities[index % preset.opacities.length],
+    points: [[0.1 + index * 0.01, 0.2, 0.5]],
+  }));
+  assert.deepEqual(validateAnnotationFile(validFile({ annotations: [{ ...file.annotations[0], strokes: presetStrokes }] }), manifest).annotations[0].strokes, presetStrokes);
   const reversed = validFile({
     annotations: [
-      { anchor: "home-writing", contentHash: manifest["/"].anchors["home-writing"].contentHash, layout: "narrow", strokes: [{ tool: "pen", style: "blue", points: [[0.1234567, -0, 0.5]] }] },
+      { anchor: "home-writing", contentHash: manifest["/"].anchors["home-writing"].contentHash, layout: "narrow", strokes: [{ tool: "pen", style: "blue", width: 3.5, opacity: 0.82, points: [[0.1234567, -0, 0.5]] }] },
       ...file.annotations,
     ],
   });
@@ -92,6 +115,31 @@ test("strict validation accepts the fixture and deterministic serialization is s
   assert.match(once, /0\.1235/);
   assert.doesNotMatch(once, /timestamp|private|device|\/home\//i);
   assert.equal(Object.is(canonicalizeAnnotationFile(reversed).annotations[1].strokes[0].points[0][1], -0), false);
+});
+
+test("legacy v1 files migrate deterministically without changing their visual defaults", () => {
+  const legacy = legacyFile({
+    annotations: [
+      legacyFile().annotations[0],
+      {
+        anchor: "home-writing",
+        contentHash: manifest["/"].anchors["home-writing"].contentHash,
+        layout: "narrow",
+        strokes: [{ tool: "highlighter", style: "yellow", points: [[0.2, 0.3, 0.7]] }],
+      },
+    ],
+  });
+  const migrated = validateAnnotationFile(legacy, manifest);
+  assert.equal(migrated.schemaVersion, 2);
+  assert.deepEqual(migrated.annotations[0].strokes[0], {
+    tool: "pen", style: "graphite", width: 2.25, opacity: 1, points: [[0.1, 0.2, 0.5], [0.3, 0.4, 0.6]],
+  });
+  assert.deepEqual(migrated.annotations[1].strokes[0], {
+    tool: "highlighter", style: "yellow", width: 12, opacity: 0.22, points: [[0.2, 0.3, 0.7]],
+  });
+  const once = serializeAnnotationFile(legacy, manifest);
+  assert.equal(once, serializeAnnotationFile(JSON.parse(once), manifest));
+  assert.equal(JSON.parse(once).schemaVersion, 2);
 });
 
 test("serialization drops cleared targets so they cannot go stale in the repository", () => {
@@ -118,7 +166,7 @@ test("refreshed revisions restamp untouched targets and report drawn ones as sta
   const file = validFile({
     annotations: [
       { anchor: "home-introduction", contentHash: older, layout: "broad", strokes: [] },
-      { anchor: "home-writing", contentHash: older, layout: "narrow", strokes: [{ tool: "pen", style: "blue", points: [[0.1, 0.2, 0.5]] }] },
+      { anchor: "home-writing", contentHash: older, layout: "narrow", strokes: [{ tool: "pen", style: "blue", width: 2.25, opacity: 1, points: [[0.1, 0.2, 0.5]] }] },
       { anchor: "home-boston", contentHash: manifest["/"].anchors["home-boston"].contentHash, layout: "broad", strokes: [] },
     ],
   });
@@ -138,11 +186,14 @@ test("refreshed revisions restamp untouched targets and report drawn ones as sta
 });
 
 test("validation rejects unknown schema, routes, anchors, tools, styles, and fields", () => {
-  rejects(validFile({ schemaVersion: 2 }), /unknown schema version/);
+  rejects(validFile({ schemaVersion: 3 }), /unknown schema version/);
   rejects(validFile({ route: "/missing/" }), /unknown route/);
   rejects(changed(validFile(), (file) => { file.annotations[0].anchor = "not-an-anchor"; }), /unknown anchor/);
   rejects(changed(validFile(), (file) => { file.annotations[0].strokes[0].tool = "spray"; }), /tool is unknown/);
   rejects(changed(validFile(), (file) => { file.annotations[0].strokes[0].style = "#fff"; }), /style is not allowed/);
+  rejects(changed(validFile(), (file) => { file.annotations[0].strokes[0].width = 2.3; }), /width is not allowed/);
+  rejects(changed(validFile(), (file) => { file.annotations[0].strokes[0].opacity = 0.81; }), /opacity is not allowed/);
+  rejects(changed(validFile(), (file) => { file.annotations[0].strokes[0].width = "url(javascript:alert(1))"; }), /width is not allowed/);
   rejects({ ...validFile(), rawSvg: "<svg onload=alert(1)>" }, /must contain only/);
   rejects(changed(validFile(), (file) => { file.annotations[0].id = "file-supplied-dom-id"; }), /must contain only/);
   rejects(changed(validFile(), (file) => { file.annotations[0].strokes[0].url = "https://example.test"; }), /must contain only/);
@@ -167,7 +218,7 @@ test("validation enforces file, annotation, stroke, and point limits", () => {
   rejects(validFile(), /file exceeds/, { byteLength: ANNOTATION_LIMITS.maxFileBytes + 1 });
   rejects(validFile({ annotations: Array.from({ length: ANNOTATION_LIMITS.maxAnnotations + 1 }, () => ({})) }), /annotation count exceeds/);
   rejects(changed(validFile(), (file) => {
-    file.annotations[0].strokes = Array.from({ length: ANNOTATION_LIMITS.maxStrokes + 1 }, () => ({ tool: "pen", style: "graphite", points: [[0, 0, 0.5]] }));
+    file.annotations[0].strokes = Array.from({ length: ANNOTATION_LIMITS.maxStrokes + 1 }, () => ({ tool: "pen", style: "graphite", width: 2.25, opacity: 1, points: [[0, 0, 0.5]] }));
   }), /stroke count exceeds/);
   rejects(changed(validFile(), (file) => {
     file.annotations[0].strokes[0].points = Array.from({ length: ANNOTATION_LIMITS.maxPointsPerStroke + 1 }, () => [0, 0, 0.5]);
@@ -176,6 +227,8 @@ test("validation enforces file, annotation, stroke, and point limits", () => {
     file.annotations[0].strokes = Array.from({ length: 6 }, () => ({
       tool: "pen",
       style: "graphite",
+      width: 2.25,
+      opacity: 1,
       points: Array.from({ length: 2_001 }, () => [0, 0, 0.5]),
     }));
   }), /point count exceeds/);
@@ -206,16 +259,38 @@ test("fixture data generates inert, allowlisted SVG isolated to each route", asy
   assert.match(home, /annotation-layer--broad/);
   assert.match(home, /annotation-layer--narrow/);
   assert.match(home, /aria-hidden="true" focusable="false"/);
-  assert.match(home, /<path class="annotation-stroke annotation-stroke--pen-blue"/);
-  assert.match(home, /<path class="annotation-stroke annotation-stroke--highlighter-yellow"/);
-  assert.doesNotMatch(home, /<path class="annotation-stroke annotation-stroke--pen-graphite"/);
-  assert.match(dandho, /<path class="annotation-stroke annotation-stroke--pen-graphite"/);
-  assert.doesNotMatch(dandho, /<path class="annotation-stroke annotation-stroke--(?:pen-blue|highlighter-yellow)"/);
+  assert.match(home, /<path class="annotation-stroke annotation-tool--pen annotation-color--blue annotation-width--225 annotation-opacity--100 annotation-pressure--2"/);
+  assert.match(home, /<path class="annotation-stroke annotation-tool--highlighter annotation-color--yellow annotation-width--1200 annotation-opacity--22 annotation-pressure--fixed"/);
+  assert.doesNotMatch(home, /annotation-tool--pen annotation-color--graphite/);
+  assert.match(dandho, /annotation-tool--pen annotation-color--graphite/);
+  assert.doesNotMatch(dandho, /<path[^>]+annotation-color--(?:blue|yellow)/);
   assert.doesNotMatch(khata, /annotation-layer/);
   for (const html of [home, dandho]) {
     assert.doesNotMatch(html, /<svg[^>]+(?:id=|tabindex=|onclick=|href=|style=)/);
     assert.doesNotMatch(html, /<script[^>]*annotation|innerHTML|javascript:/i);
   }
+});
+
+test("the generated SVG maps every reviewed preset value to fixed classes", () => {
+  const definition = ANNOTATION_ROUTES[0];
+  const source = readFileSync(resolve(siteRoot, definition.page), "utf8");
+  const strokes = Object.entries(TOOL_PRESETS).flatMap(([tool, preset]) => preset.styles.map((style, index) => ({
+    tool,
+    style,
+    width: preset.widths[index % preset.widths.length],
+    opacity: preset.opacities[index % preset.opacities.length],
+    points: [[0.1, 0.1 + index * 0.03, index / Math.max(1, preset.styles.length - 1)], [0.8, 0.2, 1]],
+  })));
+  const file = validFile({ annotations: [{ ...validFile().annotations[0], strokes }] });
+  const validated = validateAnnotationFile(file, manifest);
+  const html = renderRouteAnnotations(source, validated, definition);
+  for (const [tool, preset] of Object.entries(TOOL_PRESETS)) {
+    assert.match(html, new RegExp(`annotation-tool--${tool}`));
+    for (const style of preset.styles) assert.match(html, new RegExp(`annotation-color--${style}`));
+  }
+  assert.doesNotMatch(html, /<path[^>]+(?:style=|onload=|href=)/);
+  assert.match(html, /annotation-pressure--fixed/);
+  assert.match(html, /annotation-pressure--[0-4]/);
 });
 
 test("the renderer uses deterministic finite paths and eraser hit testing prefers the top stroke", () => {
@@ -250,7 +325,7 @@ test("every supported layout scope validates and generates its own scoped layer"
       anchor: "home-introduction",
       contentHash: hash,
       layout,
-      strokes: [{ tool: "pen", style: "graphite", points: [[0.1, 0.2, 0.5], [0.3, 0.4, 0.6]] }],
+      strokes: [{ tool: "pen", style: "graphite", width: 2.25, opacity: 1, points: [[0.1, 0.2, 0.5], [0.3, 0.4, 0.6]] }],
     })),
   });
   assert.deepEqual(LAYOUTS, ["narrow", "broad", "compact"]);

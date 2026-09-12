@@ -7,7 +7,7 @@ import { extname, join, resolve } from "node:path";
 import { after, before, describe, test } from "node:test";
 import { createAuthorServer, listen } from "../tools/author-server.mjs";
 import { createAnnotationManifest, generateAnnotatedPages } from "../scripts/annotation-build.mjs";
-import { serializeAnnotationFile } from "../tools/annotation-core.js";
+import { TOOL_PRESETS, serializeAnnotationFile } from "../tools/annotation-core.js";
 
 function findChromium() {
   const candidates = [
@@ -221,12 +221,13 @@ describe("local annotation editor in a real browser", { skip: unavailable, timeo
 
   test("imports home and essay fixtures, scopes responsive layers, and exports deterministic JSON", async () => {
     const ready = await evaluate('document.querySelector("#status").textContent');
-    assert.match(ready, /Local page ready in read\/scroll mode/);
+    assert.match(ready, /Local page ready in read and scroll mode/);
     assert.doesNotMatch(ready, /could not be refreshed|Page content changed/);
     assert.equal(await evaluate('document.querySelector("#status").dataset.error'), "false");
 
     await setFile(new URL("./fixtures/annotations/home.json", import.meta.url).pathname);
     await waitFor('document.querySelector("#status").textContent.includes("imported and validated")', "home fixture did not import");
+    assert.match(await evaluate('document.querySelector("#status").textContent'), /Legacy v1 strokes were deterministically migrated/);
     let visibility = await evaluate(`(() => {
       const doc = document.querySelector("#page-preview").contentDocument;
       return [...doc.querySelectorAll(".annotation-layer")].map((node) => [node.className.baseVal, getComputedStyle(node).display]);
@@ -278,7 +279,7 @@ describe("local annotation editor in a real browser", { skip: unavailable, timeo
     await waitFor('document.querySelector("#page-preview").contentDocument?.querySelector("[data-annotation-id=dandho-overview]")', "Dandho preview did not load");
     await setFile(new URL("./fixtures/annotations/dandho.json", import.meta.url).pathname);
     await waitFor('document.querySelector("#status").textContent.includes("dandho.json imported")', "Dandho fixture did not import");
-    assert.equal(await evaluate('document.querySelector("#page-preview").contentDocument.querySelectorAll(".annotation-stroke--pen-graphite").length'), 1);
+    assert.equal(await evaluate('document.querySelector("#page-preview").contentDocument.querySelectorAll(".annotation-tool--pen.annotation-color--graphite").length'), 1);
   });
 
   test("draw, pointer cancellation, erase, undo, and confirmed clear preserve editor state", async () => {
@@ -338,6 +339,42 @@ describe("local annotation editor in a real browser", { skip: unavailable, timeo
     assert.equal(await evaluate('document.querySelector("#page-preview").contentDocument.querySelectorAll("[data-annotation-id=home-introduction] > .annotation-layer--broad .annotation-stroke").length'), 0);
     await evaluate('document.querySelector("#undo").click()');
     assert.equal(await evaluate('document.querySelector("#page-preview").contentDocument.querySelectorAll("[data-annotation-id=home-introduction] > .annotation-layer--broad .annotation-stroke").length'), before + 1);
+    await evaluate('document.querySelector("#redo").click()');
+    assert.equal(await evaluate('document.querySelector("#page-preview").contentDocument.querySelectorAll("[data-annotation-id=home-introduction] > .annotation-layer--broad .annotation-stroke").length'), 0);
+    await evaluate('document.querySelector("#undo").click()');
+    assert.equal(await evaluate('document.querySelector("#page-preview").contentDocument.querySelectorAll("[data-annotation-id=home-introduction] > .annotation-layer--broad .annotation-stroke").length'), before + 1);
+  });
+
+  test("every safe preset exposes curated colors, widths, opacity, and a matching preview", async () => {
+    for (const [tool, preset] of Object.entries(TOOL_PRESETS)) {
+      await evaluate(`document.querySelector(${JSON.stringify(`[data-tool=${tool}]`)}).click()`);
+      const controls = await evaluate(`(() => ({
+        colors: [...document.querySelectorAll("#color-palette .color-swatch")].map((node) => node.dataset.style),
+        widths: [...document.querySelector("#width").options].map((option) => Number(option.value)),
+        opacities: [...document.querySelector("#opacity").options].map((option) => Number(option.value)),
+        previewPressure: document.querySelector("#brush-preview").dataset.pressureAware,
+        hidden: document.querySelector("#brush-settings").hidden,
+      }))()`);
+      assert.deepEqual(controls.colors, [...preset.styles]);
+      assert.deepEqual(controls.widths, [...preset.widths]);
+      assert.deepEqual(controls.opacities, [...preset.opacities]);
+      assert.equal(controls.previewPressure, String(preset.pressure));
+      assert.equal(controls.hidden, false);
+      for (const style of preset.styles) {
+        await evaluate(`document.querySelector(${JSON.stringify(`#color-palette [data-style=${style}]`)}).click()`);
+        assert.equal(await evaluate('document.querySelector("#color-palette [aria-checked=true]").dataset.style'), style);
+      }
+      for (const width of preset.widths) {
+        await evaluate(`(() => { const select = document.querySelector("#width"); select.value = ${JSON.stringify(String(width))}; select.dispatchEvent(new Event("change", { bubbles: true })); })()`);
+        assert.equal(Number(await evaluate('document.querySelector("#brush-preview").style.strokeWidth')), width);
+      }
+      for (const opacity of preset.opacities) {
+        await evaluate(`(() => { const select = document.querySelector("#opacity"); select.value = ${JSON.stringify(String(opacity))}; select.dispatchEvent(new Event("change", { bubbles: true })); })()`);
+        assert.equal(Number(await evaluate('document.querySelector("#brush-preview").style.opacity')), opacity);
+      }
+    }
+    await evaluate('document.querySelector("[data-tool=eraser]").click()');
+    assert.equal(await evaluate('document.querySelector("#brush-settings").hidden'), true);
   });
 
   test("single-key shortcuts still work when focus sits inside the preview page", async () => {
@@ -352,10 +389,38 @@ describe("local annotation editor in a real browser", { skip: unavailable, timeo
     await pressInPreview("h");
     assert.equal(await evaluate('document.querySelector("[data-tool=highlighter]").getAttribute("aria-checked")'), "true");
     await pressInPreview("p");
-    assert.equal(await evaluate('document.querySelector("[data-tool=pen]").getAttribute("aria-checked")'), "true");
+    assert.equal(await evaluate('document.querySelector("[data-tool=pencil]").getAttribute("aria-checked")'), "true");
     await pressInPreview("Escape");
     await pause(100);
     assert.equal(await evaluate('document.querySelector("#draw-toggle").getAttribute("aria-pressed")'), "false");
+    const beforeTool = await evaluate('document.querySelector(".tool[aria-checked=true]").dataset.tool');
+    const allowed = await evaluate(`(() => {
+      const event = new KeyboardEvent("keydown", { key: "m", bubbles: true, cancelable: true });
+      document.dispatchEvent(event);
+      return !event.defaultPrevented;
+    })()`);
+    assert.equal(allowed, true, "single-key shortcuts must not claim keys outside drawing mode");
+    assert.equal(await evaluate('document.querySelector(".tool[aria-checked=true]").dataset.tool'), beforeTool);
+  });
+
+  test("the editor adapts its tool surface and honors theme, reduced motion, and forced colors", async () => {
+    await page.send("Emulation.setDeviceMetricsOverride", { width: 1483, height: 885, deviceScaleFactor: 1, mobile: false });
+    await page.send("Emulation.setEmulatedMedia", { features: [] });
+    assert.equal(await evaluate('getComputedStyle(document.querySelector(".tool-dock")).position'), "absolute");
+    const lightPaper = await evaluate('getComputedStyle(document.body).backgroundColor');
+    await evaluate('document.querySelector("#theme-toggle").click(); document.querySelector("#theme-toggle").click()');
+    assert.equal(await evaluate('document.body.dataset.theme'), "dark");
+    assert.notEqual(await evaluate('getComputedStyle(document.body).backgroundColor'), lightPaper);
+    await page.send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: "reduce" }] });
+    assert.ok(Number.parseFloat(await evaluate('getComputedStyle(document.querySelector("#draw-toggle")).transitionDuration')) <= 0.001);
+    await page.send("Emulation.setEmulatedMedia", { features: [{ name: "forced-colors", value: "active" }] });
+    assert.equal(await evaluate('getComputedStyle(document.querySelector(".preview-scroll")).backgroundImage'), "none");
+    await page.send("Emulation.setEmulatedMedia", { features: [] });
+    await page.send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+    await pause(100);
+    assert.equal(await evaluate('getComputedStyle(document.querySelector(".tool-dock")).position'), "static");
+    await evaluate('document.querySelector("#theme-toggle").click()');
+    await page.send("Emulation.setDeviceMetricsOverride", { width: 1483, height: 885, deviceScaleFactor: 1, mobile: false });
   });
 
   test("the undo shortcut during a held stroke undoes once and commits nothing", async () => {
@@ -423,8 +488,8 @@ describe("local annotation editor in a real browser", { skip: unavailable, timeo
     await page.send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
     await page.send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 5 });
     await pause(100);
-    const targetHeights = await evaluate('[...document.querySelectorAll("button, select, .file-control")].map((node) => node.getBoundingClientRect().height)');
-    for (const height of targetHeights) assert.ok(height >= 44, `coarse target rendered at ${height}px`);
+    const targetHeights = await evaluate('[...document.querySelectorAll("button, select, .file-control")].map((node) => ({ name: node.id || node.className || node.tagName, height: node.getBoundingClientRect().height }))');
+    for (const target of targetHeights) assert.ok(target.height >= 44, `${target.name} coarse target rendered at ${target.height}px`);
     if (!(await evaluate('document.querySelector("#draw-toggle").getAttribute("aria-pressed") === "true"'))) {
       await evaluate('document.querySelector("#draw-toggle").click()');
     }
@@ -440,6 +505,20 @@ describe("local annotation editor in a real browser", { skip: unavailable, timeo
     })()`);
     assert.equal(await evaluate('document.querySelector("#page-preview").contentDocument.querySelectorAll(".annotation-author-canvas .annotation-stroke").length'), before + 1);
     assert.equal(await evaluate('getComputedStyle(document.querySelector("#page-preview").contentDocument.querySelector(".annotation-author-canvas")).touchAction'), "none");
+    await evaluate(`(() => {
+      const frame = document.querySelector("#page-preview");
+      const win = frame.contentWindow;
+      const layer = frame.contentDocument.querySelector(".annotation-author-canvas");
+      const rect = layer.getBoundingClientRect();
+      const options = { bubbles: true, cancelable: true, pointerId: 92, pointerType: "touch", isPrimary: true, button: 0, clientX: rect.left + rect.width * 0.3, clientY: rect.top + rect.height * 0.6, pressure: 0.8 };
+      layer.dispatchEvent(new win.PointerEvent("pointerdown", options));
+      layer.dispatchEvent(new win.PointerEvent("pointercancel", options));
+    })()`);
+    assert.equal(await evaluate('document.querySelector("#page-preview").contentDocument.querySelectorAll(".annotation-author-canvas .annotation-stroke").length'), before + 1);
+    assert.match(await evaluate('document.querySelector("#status").textContent'), /Interrupted stroke discarded/);
+    await evaluate('document.querySelector("#draw-toggle").click()');
+    assert.equal(await evaluate('document.querySelector("#page-preview").contentDocument.querySelector(".annotation-layer").classList.contains("annotation-author-canvas")'), false);
+    assert.equal(await evaluate('getComputedStyle(document.querySelector("#page-preview").contentDocument.querySelector(".annotation-layer")).pointerEvents'), "none");
     const offOrigin = requests.filter((url) => /^https?:/.test(url) && !url.startsWith(origin));
     assert.deepEqual(offOrigin, []);
   });
@@ -511,8 +590,8 @@ describe("local annotation editor in a real browser", { skip: unavailable, timeo
     await page.send("Emulation.setScriptExecutionDisabled", { value: true });
     await page.send("Page.navigate", { url: `${fixtureOrigin}/dandho/` });
     await waitFor('document.querySelector("h1")?.textContent === "Dandho"', "no-JS generated Dandho fixture did not load");
-    assert.equal(await evaluate('document.querySelectorAll(".annotation-stroke--pen-graphite").length'), 1);
-    assert.equal(await evaluate('document.querySelectorAll(".annotation-stroke--pen-blue, .annotation-stroke--highlighter-yellow").length'), 0);
+    assert.equal(await evaluate('document.querySelectorAll(".annotation-tool--pen.annotation-color--graphite").length'), 1);
+    assert.equal(await evaluate('document.querySelectorAll(".annotation-color--blue, .annotation-color--yellow").length'), 0);
     assert.ok(await evaluate('document.querySelector(".article-body").innerText.length > 2000'));
     await evaluate('document.body.style.setProperty("font-family", "serif", "important")');
     await pause(100);

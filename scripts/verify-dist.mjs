@@ -27,7 +27,7 @@ const text = (await Promise.all(textFiles.map((path) => readFile(path, "utf8")))
 const forbiddenContent = [
   [/(?:127\.0\.0\.1|localhost)/i, "loopback URL"],
   [/(?:\/home\/avifacts|firstmate)/i, "private path"],
-  [/(?:Annotation author|Enable drawing|authoring-manifest|Import route JSON)/i, "editor text"],
+  [/(?:Annotation (?:author|studio)|(?:Enable|Start) drawing|authoring-manifest|Import (?:route )?JSON)/i, "editor text"],
   [/(?:localStorage|sessionStorage|indexedDB|serviceWorker)/, "draft storage or service worker"],
   [/(?:XMLHttpRequest|sendBeacon|new WebSocket|method\s*:\s*["']POST)/, "network write code"],
 ];

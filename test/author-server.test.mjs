@@ -20,7 +20,7 @@ test("the author server is loopback-only, read-only, and does not expose route d
     assert.equal(page.status, 200);
     assert.match(page.headers.get("content-security-policy"), /object-src 'none'/);
     assert.equal(page.headers.get("set-cookie"), null);
-    assert.match(await page.text(), /Annotation author/);
+    assert.match(await page.text(), /Annotation studio/);
 
     const manifestResponse = await fetch(`${origin}/authoring-manifest.json`);
     const manifest = await manifestResponse.json();

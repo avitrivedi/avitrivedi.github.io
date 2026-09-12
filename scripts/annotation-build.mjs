@@ -5,6 +5,7 @@ import {
   ANNOTATION_CSS,
   ANNOTATION_LIMITS,
   LAYOUTS,
+  strokeClassNames,
   strokePath,
   validateAnnotationFile,
   validateManifest,
@@ -124,19 +125,12 @@ export async function createAnnotationManifest(sourceRoot = resolve("site")) {
   return manifest;
 }
 
-const STROKE_CLASSES = Object.freeze({
-  "pen:graphite": "annotation-stroke--pen-graphite",
-  "pen:blue": "annotation-stroke--pen-blue",
-  "highlighter:yellow": "annotation-stroke--highlighter-yellow",
-});
-
 function svgFor(annotation) {
   if (!LAYOUTS.includes(annotation.layout)) throw new Error("unsafe unvalidated layout reached the renderer");
   const paths = annotation.strokes.map((stroke) => {
-    const strokeClass = STROKE_CLASSES[`${stroke.tool}:${stroke.style}`];
-    if (!strokeClass) throw new Error("unsafe unvalidated stroke style reached the renderer");
+    const classes = strokeClassNames(stroke);
     const path = strokePath(stroke.points, 1000);
-    return `<path class="annotation-stroke ${strokeClass}" d="${path}"></path>`;
+    return `<path class="${classes}" d="${path}"></path>`;
   }).join("");
   return `<svg class="annotation-layer annotation-layer--${annotation.layout}" viewBox="0 0 1000 1000" preserveAspectRatio="none" aria-hidden="true" focusable="false">${paths}</svg>`;
 }
