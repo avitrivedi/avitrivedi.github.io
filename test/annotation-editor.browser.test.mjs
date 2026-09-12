@@ -256,6 +256,11 @@ describe("local annotation editor in a real browser", { skip: unavailable, timeo
 
     await evaluate('document.querySelector("#public-preview").click()');
     assert.equal(await evaluate(`(() => {
+      const dock = document.querySelector("#tool-dock");
+      dock.querySelector(".color-swatch").focus();
+      return dock.inert && !dock.contains(document.activeElement);
+    })()`), true);
+    assert.equal(await evaluate(`(() => {
       const doc = document.querySelector("#page-preview").contentDocument;
       const layers = [...doc.querySelectorAll(".annotation-layer")];
       return layers.length === 2 && layers.every((node) => getComputedStyle(node).pointerEvents === "none" && node.getAttribute("aria-hidden") === "true" && node.getAttribute("focusable") === "false") && !doc.querySelector(".annotation-author-selected, .annotation-author-canvas");

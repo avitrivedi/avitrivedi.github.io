@@ -46,7 +46,7 @@ const THEME_ORDER = ["system", "light", "dark"];
 
 const elements = Object.fromEntries([
   "status", "route", "anchor", "layout", "viewport", "draw-toggle", "public-preview",
-  "width", "opacity", "color-palette", "brush-settings", "brush-preview", "undo", "redo",
+  "width", "opacity", "color-palette", "brush-settings", "brush-preview", "tool-dock", "undo", "redo",
   "clear", "empty", "export", "import-file", "page-preview", "preview-size", "theme-toggle",
 ].map((id) => [id, document.getElementById(id)]));
 const toolButtons = [...document.querySelectorAll(".tool")];
@@ -437,6 +437,7 @@ function setPublicPreview(next) {
   elements["public-preview"].setAttribute("aria-pressed", String(publicPreview));
   elements["public-preview"].querySelector("span").textContent = publicPreview ? "Exit public preview" : "Public preview";
   elements["draw-toggle"].disabled = publicPreview;
+  elements["tool-dock"].inert = publicPreview;
   for (const control of drawingControls) control.disabled = publicPreview || ((control === elements.undo || control === elements.redo) && control.disabled);
   if (!publicPreview) {
     for (const control of drawingControls) if (control !== elements.undo && control !== elements.redo) control.disabled = false;
@@ -457,6 +458,7 @@ function resetModes() {
   elements["public-preview"].setAttribute("aria-pressed", "false");
   elements["public-preview"].querySelector("span").textContent = "Public preview";
   elements["draw-toggle"].disabled = false;
+  elements["tool-dock"].inert = false;
   elements["draw-toggle"].setAttribute("aria-pressed", "false");
   elements["draw-toggle"].querySelector("span").textContent = "Start drawing";
   for (const control of drawingControls) if (control !== elements.undo && control !== elements.redo) control.disabled = false;
