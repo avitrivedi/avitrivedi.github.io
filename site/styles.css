@@ -110,32 +110,6 @@ h1 { margin-bottom: 0.18rem; color: #707070; }
   transition: color var(--duration-quick) ease-out, padding-left var(--duration-fast) var(--ease-smooth-out), opacity 140ms ease;
 }
 .work-link time { flex: none; color: #999; }
-.work-title { display: inline-flex; align-items: baseline; }
-.new-marker {
-  position: relative;
-  display: inline-flex;
-  width: 2.5rem;
-  height: 1.5rem;
-  align-items: center;
-  justify-content: center;
-  margin-left: 0.5rem;
-  color: #745800;
-  font-size: 0.8125rem;
-  font-weight: 500;
-  letter-spacing: -0.035em;
-  line-height: 1;
-  transform: rotate(-3deg) translateY(0.1rem);
-}
-.new-marker > span { position: relative; z-index: 1; }
-.new-marker svg { position: absolute; inset: 0; display: block; overflow: visible; }
-.new-marker path {
-  fill: none;
-  stroke: #e3ad00;
-  stroke-width: 1.5;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  vector-effect: non-scaling-stroke;
-}
 @media (hover: hover) and (pointer: fine) {
   .work-list:has(.work-link:hover) .work-link:not(:hover),
   .work-list:has(.work-link:focus-visible) .work-link:not(:focus-visible) { opacity: 0.3; }
@@ -224,8 +198,7 @@ h1 { margin-bottom: 0.18rem; color: #707070; }
 @media (forced-colors: active) {
   .top-veil { display: none; }
   .footer-rule, .work-list, .work-list li, .article-footer { border-color: CanvasText; }
-  .cat, .new-marker { color: CanvasText; }
+  .cat { color: CanvasText; }
   .work-link { opacity: 1 !important; }
-  .new-marker path { fill: none; stroke: CanvasText; }
   a:focus-visible, [tabindex]:focus-visible { outline-color: Highlight; }
 }
