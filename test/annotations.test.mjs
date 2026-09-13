@@ -263,9 +263,15 @@ test("content revisions change when anchored source content changes", () => {
   assert.equal(before.get("home-writing").contentHash, after.get("home-writing").contentHash);
 });
 
-test("empty production data leaves page bytes unchanged", async () => {
+test("production data publishes only reviewed route annotations", async () => {
   const generated = await generateAnnotatedPages({ sourceRoot: siteRoot, annotationRoot: resolve("annotations") });
-  for (const definition of ANNOTATION_ROUTES) {
+  const home = generated.pages.get("index.html");
+  assert.equal((home.match(/class="annotation-layer/g) ?? []).length, 2);
+  assert.equal((home.match(/class="annotation-layer annotation-layer--broad"/g) ?? []).length, 2);
+  assert.doesNotMatch(home, /class="annotation-layer annotation-layer--(?:narrow|compact)"/);
+  assert.equal((home.match(/aria-hidden="true" focusable="false"/g) ?? []).length, 2);
+  assert.doesNotMatch(home, /<svg[^>]+(?:id=|tabindex=|onclick=|href=|style=)/);
+  for (const definition of ANNOTATION_ROUTES.slice(1)) {
     assert.equal(generated.pages.get(definition.page), readFileSync(resolve(siteRoot, definition.page), "utf8"));
   }
 });

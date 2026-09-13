@@ -6,6 +6,7 @@ import { homedir, tmpdir } from "node:os";
 import { extname, join, normalize } from "node:path";
 import { after, before, describe, test } from "node:test";
 import { fileURLToPath } from "node:url";
+import { generateAnnotatedPages } from "../scripts/annotation-build.mjs";
 
 const MIME = {
   ".html": "text/html; charset=utf-8",
@@ -19,18 +20,21 @@ const MIME = {
 
 const siteRoot = fileURLToPath(new URL("../site", import.meta.url));
 
-function startSite() {
+async function startSite() {
+  const { pages } = await generateAnnotatedPages();
   const server = createServer((request, response) => {
     const path = decodeURIComponent(new URL(request.url, "http://127.0.0.1").pathname);
-    const relative = normalize(path.endsWith("/") ? `${path}index.html` : path).replace(/^(\.\.[/\\])+/, "");
+    const relative = normalize(path.endsWith("/") ? `${path}index.html` : path)
+      .replace(/^(\.\.[/\\])+/, "")
+      .replace(/^[/\\]+/, "");
     const file = join(siteRoot, relative);
-    if (!file.startsWith(siteRoot) || !existsSync(file)) {
+    if (!file.startsWith(siteRoot) || (!pages.has(relative) && !existsSync(file))) {
       response.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
       response.end("not found");
       return;
     }
     response.writeHead(200, { "content-type": MIME[extname(file)] ?? "application/octet-stream" });
-    response.end(readFileSync(file));
+    response.end(pages.get(relative) ?? readFileSync(file));
   });
   return new Promise((resolveServer) => {
     server.listen(0, "127.0.0.1", () => resolveServer(server));
@@ -503,7 +507,18 @@ describe("rendered layout in a real browser", { skip: unavailable ?? false, time
       await page.send("Emulation.setEmulatedMedia", { features: [{ name: "forced-colors", value: "active" }] });
       await settle();
       assert.equal(await styleOf(".top-veil", "display"), "none");
+      assert.ok(await evaluate('[...document.querySelectorAll(".annotation-layer")].every((node) => getComputedStyle(node).display === "none")'));
 
+      await page.send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-contrast", value: "more" }] });
+      await settle();
+      assert.ok(await evaluate('[...document.querySelectorAll(".annotation-layer")].every((node) => getComputedStyle(node).display === "none")'));
+
+      await page.send("Emulation.setEmulatedMedia", { media: "print" });
+      await settle();
+      assert.ok(await evaluate('[...document.querySelectorAll(".annotation-layer")].every((node) => getComputedStyle(node).display === "none")'));
+
+      await page.send("Emulation.setEmulatedMedia", { media: "screen", features: [{ name: "forced-colors", value: "active" }] });
+      await settle();
       const row = await box(".work-link");
       await page.send("Input.dispatchMouseEvent", {
         type: "mouseMoved",
@@ -628,11 +643,22 @@ describe("rendered layout in a real browser", { skip: unavailable ?? false, time
           const rect = node.getBoundingClientRect();
           return rect.width > 0 && rect.height > 0;
         }),
-        layers: document.querySelectorAll(".annotation-layer").length,
+        layers: [...document.querySelectorAll(".annotation-layer")].map((node) => ({
+          display: getComputedStyle(node).display,
+          scope: node.classList.contains("annotation-layer--broad") ? "broad" : "unexpected",
+          pointerEvents: getComputedStyle(node).pointerEvents,
+          ariaHidden: node.getAttribute("aria-hidden"),
+          focusable: node.getAttribute("focusable"),
+        })),
       }))()`);
       assert.ok(state.horizontal, `${label} produced horizontal scrolling`);
       assert.ok(state.anchors.length >= 3 && state.anchors.every(Boolean), `${label} collapsed an annotation anchor`);
-      assert.equal(state.layers, 0, `${label} unexpectedly published a sample mark`);
+      assert.equal(state.layers.length, 2, `${label} lost a published homepage annotation`);
+      assert.ok(state.layers.every((layer) => layer.scope === "broad" && layer.pointerEvents === "none"
+        && layer.ariaHidden === "true" && layer.focusable === "false"), `${label} exposed an interactive or unauthored annotation`);
+      const broad = width > 600 && !(height <= 768 && width >= 737);
+      assert.equal(state.layers.filter((layer) => layer.display !== "none").length, broad ? 2 : 0,
+        `${label} rendered annotations outside their authored broad scope`);
     }
   });
 
