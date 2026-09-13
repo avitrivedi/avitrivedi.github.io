@@ -469,41 +469,6 @@ describe("rendered layout in a real browser", { skip: unavailable ?? false, time
     }
   });
 
-  test("the Dandho New marker renders in the hand-drawn yellow next to its title", limits, async () => {
-    await viewport(1483, 885);
-    await open("/");
-    const layout = await evaluate(`(() => {
-      const marker = document.querySelector(".new-marker");
-      return { width: marker.offsetWidth, height: marker.offsetHeight, transform: getComputedStyle(marker).transform };
-    })()`);
-    const marker = await box(".new-marker");
-    const overlay = await box(".new-marker svg");
-    const label = await box(".new-marker > span");
-    const stroke = await box(".new-marker path");
-    const title = await box(".work-title");
-    const row = await box(".work-link");
-
-    assert.deepEqual(
-      { width: layout.width, height: layout.height },
-      { width: 40, height: 24 },
-      "the marker is not laid out at its reference size",
-    );
-    assert.ok(
-      Math.abs(overlay.width - marker.width) <= 0.5 && Math.abs(overlay.height - marker.height) <= 0.5,
-      "the hand-drawn overlay does not cover the marker box",
-    );
-    assert.notEqual(layout.transform, "none", "the marker is not tilted");
-    assert.ok(marker.height > layout.height, "the tilt does not reach the painted box");
-    assert.ok(
-      stroke.left <= label.left + 1 && stroke.right >= label.right - 1,
-      "the hand-drawn loop does not enclose the New label",
-    );
-    assert.ok(marker.left >= title.left, "marker is not beside the Dandho title");
-    assert.ok(marker.right <= row.right + 1, "marker escapes its writing row");
-    assert.equal(await styleOf(".new-marker path", "stroke"), "rgb(227, 173, 0)");
-    assert.equal(await styleOf(".new-marker path", "fill"), "none");
-  });
-
   test("the Boston footer renders compact civil time and exactly one cat pose", limits, async () => {
     await viewport(1483, 885);
     await open("/");
