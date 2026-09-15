@@ -187,8 +187,14 @@ h1 { margin-bottom: 0.18rem; color: #707070; }
 
 /* Writing pages */
 .article-page { padding-bottom: 5rem; }
-.article-nav { margin-bottom: 2.4rem; color: var(--muted); }
-.article-nav a { text-decoration: none; }
+.article-nav { margin-bottom: 2.4rem; }
+.article-index-link {
+  color: var(--muted);
+  text-decoration: none;
+  transition: color var(--duration-quick) ease-out;
+}
+.article-index-link:hover,
+.article-index-link:focus-visible { color: var(--ink); }
 .article-header { margin-bottom: 2rem; }
 .article-header h1 { margin-bottom: 0.22rem; color: var(--ink); font-size: 1.55rem; line-height: 1.2; letter-spacing: -0.025em; }
 .article-date { color: var(--muted); }
@@ -196,8 +202,7 @@ h1 { margin-bottom: 0.18rem; color: #707070; }
 .article-body p { margin-bottom: 1.15rem; }
 .article-body h2 { margin: 2.2rem 0 0.7rem; font-weight: 600; }
 .article-body .lede { font-size: 1.05rem; line-height: 1.5; }
-.article-footer { margin-top: 3.5rem; padding-top: 1rem; border-top: 1px solid var(--line); color: var(--muted); }
-.article-footer a { color: var(--ink); }
+.article-footer { margin-top: 3.5rem; padding-top: 1rem; border-top: 1px solid var(--line); }
 
 @media (max-width: 37.5rem) {
   .page-shell { width: calc(100% - 3rem); padding: 1.25rem 0 2rem; }

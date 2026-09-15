@@ -36,8 +36,8 @@ for (const route of ["dandho", "khata", "pulse"]) {
   expect(home.includes(`href="./${route}/"`), `${route} root-site route is missing`);
 }
 for (const [, article] of documents.slice(1)) {
-  expect(article.includes('<a href="../">Index</a>'), "article index route must be relative");
-  expect(article.includes('<a href="../">← Back to the index</a>'), "article back route must be relative");
+  expect(article.includes('<a class="article-index-link" href="../"><span aria-hidden="true">↩ </span>Index</a>'), "article index route must be relative");
+  expect(article.includes('<a class="article-index-link" href="../">← Back to the index</a>'), "article back route must be relative");
 }
 expect(!/tiny[ -]?coffee/i.test(documents.map(([, html]) => html).join("\n")), "removed project appears in public pages");
 expect(/prefers-reduced-motion:\s*reduce/.test(css), "CSS must respect reduced motion");
