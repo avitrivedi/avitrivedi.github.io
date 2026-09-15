@@ -266,13 +266,14 @@ test("content revisions change when anchored source content changes", () => {
 test("production data publishes only reviewed route annotations", async () => {
   const generated = await generateAnnotatedPages({ sourceRoot: siteRoot, annotationRoot: resolve("annotations") });
   const home = generated.pages.get("index.html");
-  assert.equal((home.match(/class="annotation-layer/g) ?? []).length, 2);
-  assert.equal((home.match(/class="annotation-layer annotation-layer--broad"/g) ?? []).length, 2);
+  assert.equal((home.match(/class="annotation-layer/g) ?? []).length, 1);
+  assert.equal((home.match(/class="annotation-layer annotation-layer--broad"/g) ?? []).length, 1);
   assert.doesNotMatch(home, /class="annotation-layer annotation-layer--(?:narrow|compact)"/);
   assert.equal((home.match(/annotation-stroke annotation-tool--pen annotation-color--graphite/g) ?? []).length, 9);
-  assert.equal((home.match(/annotation-stroke annotation-tool--highlighter annotation-color--yellow/g) ?? []).length, 1);
-  assert.doesNotMatch(home, /<path class="annotation-stroke[^>]+annotation-color--blue/);
-  assert.equal((home.match(/class="annotation-layer[^>]+aria-hidden="true" focusable="false"/g) ?? []).length, 2);
+  assert.doesNotMatch(home, /annotation-stroke annotation-tool--highlighter/);
+  assert.doesNotMatch(home, /data-annotation-id="home-writing"[^>]*data-annotation-active/);
+  assert.doesNotMatch(home, /<path class="annotation-stroke[^>]+annotation-color--(?:blue|yellow)/);
+  assert.equal((home.match(/class="annotation-layer[^>]+aria-hidden="true" focusable="false"/g) ?? []).length, 1);
   assert.doesNotMatch(home, /<svg class="annotation-layer[^>]+(?:id=|tabindex=|onclick=|href=|style=)/);
   for (const definition of ANNOTATION_ROUTES.slice(1)) {
     assert.equal(generated.pages.get(definition.page), readFileSync(resolve(siteRoot, definition.page), "utf8"));

@@ -724,11 +724,11 @@ describe("rendered layout in a real browser", { skip: unavailable ?? false, time
       }))()`);
       assert.ok(state.horizontal, `${label} produced horizontal scrolling`);
       assert.ok(state.anchors.length >= 3 && state.anchors.every(Boolean), `${label} collapsed an annotation anchor`);
-      assert.equal(state.layers.length, 2, `${label} lost a published homepage annotation`);
+      assert.equal(state.layers.length, 1, `${label} lost the published homepage annotation`);
       assert.ok(state.layers.every((layer) => layer.scope === "broad" && layer.pointerEvents === "none"
         && layer.ariaHidden === "true" && layer.focusable === "false"), `${label} exposed an interactive or unauthored annotation`);
       const broad = width > 600 && !(height <= 768 && width >= 737);
-      assert.equal(state.layers.filter((layer) => layer.display !== "none").length, broad ? 2 : 0,
+      assert.equal(state.layers.filter((layer) => layer.display !== "none").length, broad ? 1 : 0,
         `${label} rendered annotations outside their authored broad scope`);
     }
   });
