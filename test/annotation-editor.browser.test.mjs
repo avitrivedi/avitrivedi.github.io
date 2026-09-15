@@ -292,7 +292,12 @@ describe("local annotation editor in a real browser", { skip: unavailable, timeo
       route.value = "/dandho/";
       route.dispatchEvent(new Event("change", { bubbles: true }));
     })()`);
-    await waitFor('document.querySelector("#page-preview").contentDocument?.querySelector("[data-annotation-id=dandho-overview]")', "Dandho preview did not load");
+    await waitFor(`(() => {
+      const preview = document.querySelector("#page-preview");
+      return preview.contentWindow.location.pathname === "/preview/dandho/"
+        && preview.contentDocument?.querySelector("[data-annotation-id=dandho-overview]")
+        && document.querySelector("#status").textContent.includes("Local page ready");
+    })()`, "Dandho preview did not finish loading");
     await setFile(new URL("./fixtures/annotations/dandho.json", import.meta.url).pathname);
     await waitFor('document.querySelector("#status").textContent.includes("dandho.json imported")', "Dandho fixture did not import");
     const legacyVisual = await evaluate(`(() => {

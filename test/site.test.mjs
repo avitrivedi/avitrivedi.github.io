@@ -19,8 +19,9 @@ test("home is the concise biography, writing index, and Boston footer", () => {
   assert.match(home, /helping customers get\s+substantial value from its contract lifecycle management software/);
   assert.match(home, /founder of <a href="\.\/dandho\/">Dandho/);
   assert.equal((home.match(/class="work-link"/g) ?? []).length, 3);
-  assert.match(home, /<span>Dandho<\/span>/);
-  assert.doesNotMatch(home, /new-marker|>New<|aria-label="New"/);
+  assert.match(home, /<span class="work-title" aria-label="Dandho, New">\s*<span>Dandho<\/span>\s*<span class="new-label">New<svg viewBox="0 0 70 32" aria-hidden="true" focusable="false">/);
+  assert.equal((home.match(/\bclass="new-label"/g) ?? []).length, 1);
+  assert.equal((home.match(/>New<svg/g) ?? []).length, 1);
   assert.match(home, /<footer class="site-footer"(?:\s[^>]*)?>/);
   assert.doesNotMatch(home, /<article\b|Selected project|Archive/);
   assert.doesNotMatch(publicText, /tiny[ -]?coffee/i);

@@ -13,6 +13,7 @@
   --muted: #8a8a8a;
   --line: #e8e8e8;
   --focus: #005fcc;
+  --label-ink: #686868;
   --measure: 34.4rem;
   --year-column: 6.7rem;
   --duration-quick: 150ms;
@@ -110,6 +111,40 @@ h1 { margin-bottom: 0.18rem; color: #707070; }
   transition: color var(--duration-quick) ease-out, padding-left var(--duration-fast) var(--ease-smooth-out), opacity 140ms ease;
 }
 .work-link time { flex: none; color: #999; }
+.work-title {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.58rem;
+}
+.new-label {
+  position: relative;
+  display: inline-block;
+  flex: none;
+  padding: 0.1rem 0.24rem;
+  color: var(--label-ink);
+  font-size: 0.68rem;
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: 0.015em;
+}
+.new-label svg {
+  position: absolute;
+  inset: -0.3rem -0.34rem;
+  width: calc(100% + 0.68rem);
+  height: calc(100% + 0.6rem);
+  overflow: visible;
+  pointer-events: none;
+  color: #989898;
+}
+.new-label path {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.45;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+.new-label path + path { opacity: 0.48; stroke-width: 0.8; }
 @media (hover: hover) and (pointer: fine) {
   .work-list:has(.work-link:hover) .work-link:not(:hover),
   .work-list:has(.work-link:focus-visible) .work-link:not(:focus-visible) { opacity: 0.3; }
@@ -192,13 +227,14 @@ h1 { margin-bottom: 0.18rem; color: #707070; }
   *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
 }
 @media (prefers-contrast: more) {
-  :root { --muted: #595959; --line: #b8b8b8; }
+  :root { --muted: #595959; --line: #b8b8b8; --label-ink: #454545; }
   .updated, .year-label, .work-link time, .local-time { color: #595959; }
+  .new-label svg { color: #595959; }
 }
 @media (forced-colors: active) {
   .top-veil { display: none; }
   .footer-rule, .work-list, .work-list li, .article-footer { border-color: CanvasText; }
-  .cat { color: CanvasText; }
+  .cat, .new-label, .new-label svg { color: CanvasText; }
   .work-link { opacity: 1 !important; }
   a:focus-visible, [tabindex]:focus-visible { outline-color: Highlight; }
 }

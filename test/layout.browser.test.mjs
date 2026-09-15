@@ -412,6 +412,67 @@ describe("rendered layout in a real browser", { skip: unavailable ?? false, time
     assert.ok(reflow, "the mobile layout scrolls horizontally");
   });
 
+  test("the Dandho row exposes one semantic circled New label without unsafe geometry", limits, async () => {
+    for (const [label, width, height, mobile] of [
+      ["narrow", 390, 844, true],
+      ["compact", 1366, 768, false],
+      ["broad", 1483, 885, false],
+      ["400% reflow", 320, 256, true],
+    ]) {
+      await viewport(width, height, mobile);
+      await open("/");
+      await evaluate("document.querySelector('.work-link').scrollIntoView({ block: 'center' })");
+      await settle();
+      const state = await evaluate(`(() => {
+        const link = document.querySelector('.work-link');
+        const title = link.querySelector('.work-title');
+        const badge = link.querySelector('.new-label');
+        const oval = badge.querySelector('svg');
+        const date = link.querySelector('time');
+        const row = link.getBoundingClientRect();
+        const badgeBox = badge.getBoundingClientRect();
+        const ovalBox = oval.getBoundingClientRect();
+        const dateBox = date.getBoundingClientRect();
+        const hit = document.elementFromPoint(badgeBox.left + badgeBox.width / 2, badgeBox.top + badgeBox.height / 2);
+        return {
+          visibleText: badge.childNodes[0].textContent,
+          titleLabel: title.getAttribute('aria-label'),
+          badgeCount: document.querySelectorAll('.new-label').length,
+          svgHidden: oval.getAttribute('aria-hidden'),
+          svgFocusable: oval.getAttribute('focusable'),
+          svgPointerEvents: getComputedStyle(oval).pointerEvents,
+          pathCount: oval.querySelectorAll('path').length,
+          withinRow: ovalBox.top >= row.top - 1 && ovalBox.bottom <= row.bottom + 1,
+          clearsDate: ovalBox.right < dateBox.left,
+          hitIsLink: hit?.closest('.work-link') === link,
+          horizontal: document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1,
+        };
+      })()`);
+      assert.equal(state.visibleText, "New", `${label} lost the visible label text`);
+      assert.equal(state.titleLabel, "Dandho, New", `${label} lost the semantic title`);
+      assert.equal(state.badgeCount, 1, `${label} duplicated the label`);
+      assert.equal(state.svgHidden, "true", `${label} exposed the oval to assistive technology`);
+      assert.equal(state.svgFocusable, "false", `${label} made the oval focusable`);
+      assert.equal(state.svgPointerEvents, "none", `${label} let the oval intercept pointers`);
+      assert.equal(state.pathCount, 2, `${label} lost the two-line hand-drawn oval`);
+      assert.ok(state.withinRow, `${label} oval crossed the Dandho row boundary`);
+      assert.ok(state.clearsDate, `${label} oval overlapped the date`);
+      assert.ok(state.hitIsLink, `${label} badge area escaped the Dandho link target`);
+      assert.ok(state.horizontal, `${label} label caused horizontal scrolling`);
+    }
+
+    await viewport(1483, 885, false);
+    await open("/");
+    const { root: { nodeId } } = await page.send("DOM.getDocument");
+    const { nodeId: linkNodeId } = await page.send("DOM.querySelector", { nodeId, selector: ".work-link" });
+    const { node: { backendNodeId } } = await page.send("DOM.describeNode", { nodeId: linkNodeId });
+    const tree = await page.send("Accessibility.getPartialAXTree", { backendNodeId, fetchRelatives: false });
+    const link = tree.nodes.find((node) => node.role?.value === "link");
+    assert.ok(link, "the Dandho row is missing from the accessibility tree");
+    assert.match(link.name.value, /^Dandho, New\b/, `accessible link name was ${link.name.value}`);
+    assert.equal((link.name.value.match(/\bNew\b/g) ?? []).length, 1, "New is announced more than once");
+  });
+
   test("hovering a writing row fades the others and pointer exit restores them", limits, async () => {
     await viewport(1483, 885, false);
     await open("/");
@@ -496,6 +557,8 @@ describe("rendered layout in a real browser", { skip: unavailable ?? false, time
     await open("/");
     const animated = parseFloat(await styleOf(".cat-tail", "animation-duration"));
     assert.ok(animated > 1, `the cat tail should animate by default, got ${animated}s`);
+    assert.equal(await styleOf(".new-label", "animation-name"), "none", "the circled label should remain static");
+    assert.equal(await styleOf(".new-label", "transition-duration"), "0s", "the circled label should not add motion");
 
     try {
       await page.send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: "reduce" }] });
@@ -508,14 +571,18 @@ describe("rendered layout in a real browser", { skip: unavailable ?? false, time
       await settle();
       assert.equal(await styleOf(".top-veil", "display"), "none");
       assert.ok(await evaluate('[...document.querySelectorAll(".annotation-layer")].every((node) => getComputedStyle(node).display === "none")'));
+      assert.notEqual(await styleOf(".new-label", "display"), "none");
+      assert.equal(await styleOf(".new-label", "color"), "rgb(0, 0, 0)");
 
       await page.send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-contrast", value: "more" }] });
       await settle();
       assert.ok(await evaluate('[...document.querySelectorAll(".annotation-layer")].every((node) => getComputedStyle(node).display === "none")'));
+      assert.equal(await styleOf(".new-label", "color"), "rgb(69, 69, 69)");
 
       await page.send("Emulation.setEmulatedMedia", { media: "print" });
       await settle();
       assert.ok(await evaluate('[...document.querySelectorAll(".annotation-layer")].every((node) => getComputedStyle(node).display === "none")'));
+      assert.notEqual(await styleOf(".new-label", "display"), "none");
 
       await page.send("Emulation.setEmulatedMedia", { media: "screen", features: [{ name: "forced-colors", value: "active" }] });
       await settle();
@@ -559,6 +626,8 @@ describe("rendered layout in a real browser", { skip: unavailable ?? false, time
       routes: [...document.querySelectorAll(".work-link")].map((node) => new URL(node.href).pathname),
       email: document.querySelector('a[href^="mailto:"]').getAttribute("href"),
       poses: [...document.querySelectorAll(".cat-pose")].filter((pose) => getComputedStyle(pose).display !== "none").length,
+      newLabel: document.querySelector(".new-label").childNodes[0].textContent,
+      dandhoName: document.querySelector(".work-title").getAttribute("aria-label"),
     }))()`);
     } finally {
       await page.send("Emulation.setScriptExecutionDisabled", { value: false });
@@ -567,6 +636,8 @@ describe("rendered layout in a real browser", { skip: unavailable ?? false, time
     assert.equal(fallback.time, "Boston, Massachusetts");
     assert.equal(fallback.state, "day");
     assert.equal(fallback.poses, 1);
+    assert.equal(fallback.newLabel, "New");
+    assert.equal(fallback.dandhoName, "Dandho, New");
     assert.deepEqual(fallback.routes, ["/dandho/", "/khata/", "/pulse/"]);
     assert.equal(fallback.email, "mailto:avitrvd98@gmail.com");
   });

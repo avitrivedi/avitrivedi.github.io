@@ -637,6 +637,7 @@ function wireEvents() {
     currentFile = routeFiles.get(elements.route.value);
     configureAnchors();
     updateHistoryControls();
+    setStatus("Loading local page preview…");
     loadRoute();
   });
   elements.anchor.addEventListener("change", () => { setDrawing(false); setPublicPreview(false); });

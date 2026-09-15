@@ -269,8 +269,11 @@ test("production data publishes only reviewed route annotations", async () => {
   assert.equal((home.match(/class="annotation-layer/g) ?? []).length, 2);
   assert.equal((home.match(/class="annotation-layer annotation-layer--broad"/g) ?? []).length, 2);
   assert.doesNotMatch(home, /class="annotation-layer annotation-layer--(?:narrow|compact)"/);
-  assert.equal((home.match(/aria-hidden="true" focusable="false"/g) ?? []).length, 2);
-  assert.doesNotMatch(home, /<svg[^>]+(?:id=|tabindex=|onclick=|href=|style=)/);
+  assert.equal((home.match(/annotation-stroke annotation-tool--pen annotation-color--graphite/g) ?? []).length, 9);
+  assert.equal((home.match(/annotation-stroke annotation-tool--highlighter annotation-color--yellow/g) ?? []).length, 1);
+  assert.doesNotMatch(home, /<path class="annotation-stroke[^>]+annotation-color--blue/);
+  assert.equal((home.match(/class="annotation-layer[^>]+aria-hidden="true" focusable="false"/g) ?? []).length, 2);
+  assert.doesNotMatch(home, /<svg class="annotation-layer[^>]+(?:id=|tabindex=|onclick=|href=|style=)/);
   for (const definition of ANNOTATION_ROUTES.slice(1)) {
     assert.equal(generated.pages.get(definition.page), readFileSync(resolve(siteRoot, definition.page), "utf8"));
   }
