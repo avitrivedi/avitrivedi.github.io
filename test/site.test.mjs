@@ -33,10 +33,19 @@ test("contact and article routes are real and static", () => {
   for (const [name, html] of articles) {
     assert.ok(existsSync(new URL(`../site/${name}/index.html`, import.meta.url)));
     assert.match(home, new RegExp(`href="\\./${name}/"`));
-    assert.match(html, /<nav class="article-nav" aria-label="Writing"><a href="\.\.\/">Index<\/a><\/nav>/);
-    assert.match(html, /<footer class="article-footer"><a href="\.\.\/">← Back to the index<\/a><\/footer>/);
+    assert.match(html, /<nav class="article-nav" aria-label="Writing"><a class="article-index-link" href="\.\.\/"><span aria-hidden="true">↩ <\/span>Index<\/a><\/nav>/);
+    assert.match(html, /<footer class="article-footer"><a class="article-index-link" href="\.\.\/">← Back to the index<\/a><\/footer>/);
     assert.match(html, /<time datetime="2026-09-08">8 September, 2026<\/time>/);
     assert.doesNotMatch(html, /github\.com|private|customer quote|revenue result/i);
+  }
+});
+
+test("article index links share accessible visual states", () => {
+  assert.match(css, /\.article-index-link \{[\s\S]*color: var\(--muted\);[\s\S]*text-decoration: none;[\s\S]*transition: color var\(--duration-quick\) ease-out;[\s\S]*\}/);
+  assert.match(css, /\.article-index-link:hover,\n\.article-index-link:focus-visible \{ color: var\(--ink\); \}/);
+  for (const [, html] of articles) {
+    assert.equal((html.match(/class="article-index-link"/g) ?? []).length, 2);
+    assert.match(html, /aria-hidden="true">↩ <\/span>Index/);
   }
 });
 

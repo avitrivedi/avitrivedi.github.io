@@ -673,6 +673,61 @@ describe("rendered layout in a real browser", { skip: unavailable ?? false, time
     }
   });
 
+  test("article index actions render consistently at desktop and mobile widths", limits, async () => {
+    for (const [label, width, height, mobile] of [["desktop", 1483, 885, false], ["mobile", 390, 844, true]]) {
+      await viewport(width, height, mobile);
+      await open("/dandho/");
+      const rest = await evaluate(`(() => [...document.querySelectorAll(".article-index-link")].map((node) => {
+        const style = getComputedStyle(node);
+        return {
+          text: node.textContent.trim(),
+          href: node.getAttribute("href"),
+          color: style.color,
+          textDecorationLine: style.textDecorationLine,
+        };
+      }))()`);
+      assert.deepEqual(rest.map((link) => link.href), ["../", "../"], `${label} changed index destinations`);
+      assert.deepEqual(rest.map((link) => link.text), ["↩ Index", "← Back to the index"], `${label} changed index labels`);
+      assert.equal(rest[0].color, rest[1].color, `${label} index links did not share a resting colour`);
+      assert.equal(rest[0].textDecorationLine, "none", `${label} top link rendered an underline`);
+      assert.equal(rest[1].textDecorationLine, "none", `${label} bottom link rendered an underline`);
+    }
+
+    await viewport(1483, 885, false);
+    await open("/dandho/");
+    const top = await box(".article-index-link");
+    await page.send("Input.dispatchMouseEvent", {
+      type: "mouseMoved",
+      x: Math.round(top.left + top.width / 2),
+      y: Math.round(top.top + top.height / 2),
+      buttons: 0,
+    });
+    await pause(200);
+    const hoverColor = await evaluate('getComputedStyle(document.querySelector(".article-index-link")).color');
+    const inkColor = await evaluate(`(() => {
+      const probe = document.createElement("span");
+      probe.style.color = "var(--ink)";
+      document.body.append(probe);
+      const color = getComputedStyle(probe).color;
+      probe.remove();
+      return color;
+    })()`);
+    assert.equal(hoverColor, inkColor, "hover did not use the ink colour");
+
+    await page.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: 5, y: 5, buttons: 0 });
+    await evaluate('document.querySelector(".article-footer .article-index-link").focus()');
+    await pause(200);
+    const focusColor = await evaluate('getComputedStyle(document.activeElement).color');
+    assert.equal(focusColor, inkColor, "keyboard focus did not use the ink colour");
+
+    const { root: { nodeId } } = await page.send("DOM.getDocument");
+    const { nodeId: topNodeId } = await page.send("DOM.querySelector", { nodeId, selector: ".article-nav .article-index-link" });
+    const { node: { backendNodeId } } = await page.send("DOM.describeNode", { nodeId: topNodeId });
+    const tree = await page.send("Accessibility.getPartialAXTree", { backendNodeId, fetchRelatives: false });
+    const link = tree.nodes.find((node) => node.role?.value === "link");
+    assert.equal(link?.name.value, "Index", "decorative return glyph changed the accessible link name");
+  });
+
   test("a scrolling essay does not shift the centred measure", limits, async () => {
     await viewport(1483, 885);
     await open("/");
