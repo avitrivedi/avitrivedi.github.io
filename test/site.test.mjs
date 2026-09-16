@@ -7,6 +7,7 @@ import { bostonHour, formatBostonTime, getBostonState } from "../site/interactio
 const read = (path) => readFileSync(new URL(`../site/${path}`, import.meta.url), "utf8");
 const home = read("index.html");
 const css = read("styles.css");
+const favicon = read("favicon.svg");
 const articles = ["dandho", "khata", "pulse"].map((name) => [name, read(`${name}/index.html`)]);
 const publicText = [home, css, ...articles.map(([, html]) => html)].join("\n");
 
@@ -47,6 +48,14 @@ test("article index links share accessible visual states", () => {
     assert.equal((html.match(/class="article-index-link"/g) ?? []).length, 2);
     assert.match(html, /aria-hidden="true">↩ <\/span>Index/);
   }
+});
+
+test("favicon is the stylized exoplanet source asset", () => {
+  assert.match(favicon, /viewBox="0 0 64 64"/);
+  assert.match(favicon, /<circle cx="32" cy="32" r="24"/);
+  for (const color of ["#121647", "#0ba69f", "#f08a5d", "#ffc05a"]) assert.match(favicon, new RegExp(color, "i"));
+  assert.doesNotMatch(favicon, /coffee|cup|mug|saucer/i);
+  assert.doesNotMatch(favicon, /<path d="M13 25h34v8|<path d="M47 29h2|<circle cx="21" cy="33"/);
 });
 
 test("deployment URLs target the root origin", () => {
