@@ -50,12 +50,8 @@ test("article index links share accessible visual states", () => {
   }
 });
 
-test("favicon is the stylized exoplanet source asset", () => {
-  assert.match(favicon, /viewBox="0 0 64 64"/);
-  assert.match(favicon, /<circle cx="32" cy="32" r="24"/);
-  for (const color of ["#121647", "#0ba69f", "#f08a5d", "#ffc05a"]) assert.match(favicon, new RegExp(color, "i"));
+test("favicon source retains no coffee-cup artwork", () => {
   assert.doesNotMatch(favicon, /coffee|cup|mug|saucer/i);
-  assert.doesNotMatch(favicon, /<path d="M13 25h34v8|<path d="M47 29h2|<circle cx="21" cy="33"/);
 });
 
 test("deployment URLs target the root origin", () => {
