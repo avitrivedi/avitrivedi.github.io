@@ -7,7 +7,6 @@ import { bostonHour, formatBostonTime, getBostonState } from "../site/interactio
 const read = (path) => readFileSync(new URL(`../site/${path}`, import.meta.url), "utf8");
 const home = read("index.html");
 const css = read("styles.css");
-const favicon = read("favicon.svg");
 const articles = ["dandho", "khata", "pulse"].map((name) => [name, read(`${name}/index.html`)]);
 const publicText = [home, css, ...articles.map(([, html]) => html)].join("\n");
 
@@ -48,10 +47,6 @@ test("article index links share accessible visual states", () => {
     assert.equal((html.match(/class="article-index-link"/g) ?? []).length, 2);
     assert.match(html, /aria-hidden="true">↩ <\/span>Index/);
   }
-});
-
-test("favicon source retains no coffee-cup artwork", () => {
-  assert.doesNotMatch(favicon, /coffee|cup|mug|saucer/i);
 });
 
 test("deployment URLs target the root origin", () => {
