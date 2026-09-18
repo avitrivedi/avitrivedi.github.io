@@ -797,4 +797,52 @@ describe("rendered layout in a real browser", { skip: unavailable ?? false, time
       "the local Inter font was never requested",
     );
   });
+
+  test("the favicon renders as a recognizable multi-colour disc at 16x16 and 32x32", limits, async () => {
+    await open("/");
+    for (const size of [16, 32]) {
+      const pixels = await evaluate(`(async () => {
+        const image = new Image();
+        const loaded = new Promise((done, fail) => {
+          image.onload = done;
+          image.onerror = () => fail(new Error("the favicon did not load"));
+        });
+        image.src = "${origin}/favicon.svg";
+        await loaded;
+        const canvas = document.createElement("canvas");
+        canvas.width = ${size};
+        canvas.height = ${size};
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(image, 0, 0, ${size}, ${size});
+        const { data } = ctx.getImageData(0, 0, ${size}, ${size});
+        const rgbaAt = (x, y) => {
+          const i = (y * ${size} + x) * 4;
+          return [data[i], data[i + 1], data[i + 2], data[i + 3]];
+        };
+        const hueOf = ([r, g, b]) => {
+          const max = Math.max(r, g, b);
+          const min = Math.min(r, g, b);
+          if (max === min || max < 20) return null;
+          let hue;
+          if (max === r) hue = ((g - b) / (max - min)) % 6;
+          else if (max === g) hue = (b - r) / (max - min) + 2;
+          else hue = (r - g) / (max - min) + 4;
+          return hue * 60;
+        };
+        const hues = [];
+        for (let y = 0; y < ${size}; y += 1) {
+          for (let x = 0; x < ${size}; x += 1) {
+            const hue = hueOf(rgbaAt(x, y));
+            if (hue !== null) hues.push(hue);
+          }
+        }
+        return { cornerAlpha: rgbaAt(0, 0)[3], hues };
+      })()`);
+      assert.ok(pixels.cornerAlpha < 50, `${size}x${size} favicon corner is not clipped to a circular silhouette (alpha ${pixels.cornerAlpha})`);
+      const warm = pixels.hues.some((hue) => hue >= 10 && hue <= 55);
+      const cool = pixels.hues.some((hue) => hue >= 150 && hue <= 260);
+      assert.ok(warm, `${size}x${size} favicon has no warm coral/amber region`);
+      assert.ok(cool, `${size}x${size} favicon has no cool indigo/teal region`);
+    }
+  });
 });
